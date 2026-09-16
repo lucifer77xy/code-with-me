@@ -1,0 +1,216 @@
+export interface Item {
+  id: string;
+  type: "joke" | "quote" | "couple_meme";
+  content: string;
+  authorOrPunchline: string;
+  category: string;
+  tag: string;
+}
+
+export const JOKES_AND_QUOTES: Item[] = [
+  // --- Developer Jokes ---
+  {
+    id: "j1",
+    type: "joke",
+    content: "Why do programmers prefer dark mode?",
+    authorOrPunchline: "Because light attracts bugs. 🪲",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j2",
+    type: "joke",
+    content: "Why did the developer go broke?",
+    authorOrPunchline: "Because he used up all his cache! 💸",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j3",
+    type: "joke",
+    content: "There are only 10 types of people in the world:",
+    authorOrPunchline: "Those who understand binary, and those who don't. 🤖",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j4",
+    type: "joke",
+    content: "How do you comfort a JavaScript bug?",
+    authorOrPunchline: "You console it. `console.log('it will be okay')` 🥹",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j5",
+    type: "joke",
+    content: "A SQL query walks into a bar, walks up to two tables and asks...",
+    authorOrPunchline: "'Can I join you?' 🍻",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j6",
+    type: "joke",
+    content: "Why was the JavaScript developer sad?",
+    authorOrPunchline: "Because he didn't know how to 'null' his feelings. 💔",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j7",
+    type: "joke",
+    content: "What is an algorithm?",
+    authorOrPunchline: "Word used by programmers when they do not want to explain what they did. 🤫",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j8",
+    type: "joke",
+    content: "Why do Java developers wear glasses?",
+    authorOrPunchline: "Because they don't C#! 👓",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j9",
+    type: "joke",
+    content: "Debugging: Being the detective in a crime movie...",
+    authorOrPunchline: "where you are also the murderer. 🕵️‍♂️",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+  {
+    id: "j10",
+    type: "joke",
+    content: "Real programmer's definition of infinite loop:",
+    authorOrPunchline: "See: Infinite Loop. 🔁",
+    category: "Humor",
+    tag: "Programming Joke",
+  },
+
+  // --- Wholesome Couple / Dev Memes ---
+  {
+    id: "c1",
+    type: "couple_meme",
+    content: "Are you an asynchronous function?",
+    authorOrPunchline: "Because I will always await you. 💕",
+    category: "Couple Love",
+    tag: "Sweet Pick-up Line",
+  },
+  {
+    id: "c2",
+    type: "couple_meme",
+    content: "You're the CSS to my HTML...",
+    authorOrPunchline: "Without you, my life is completely unstyled! 🎨",
+    category: "Couple Love",
+    tag: "Sweet Pick-up Line",
+  },
+  {
+    id: "c3",
+    type: "couple_meme",
+    content: "Our relationship has zero merge conflicts.",
+    authorOrPunchline: "Even when rebasing, we always pick `ours`! 🤝💖",
+    category: "Couple Love",
+    tag: "Git Love",
+  },
+  {
+    id: "c4",
+    type: "couple_meme",
+    content: "Are you a Git repository?",
+    authorOrPunchline: "Because I want to commit to you forever. 💍",
+    category: "Couple Love",
+    tag: "Git Love",
+  },
+  {
+    id: "c5",
+    type: "couple_meme",
+    content: "Pair programming rule #1:",
+    authorOrPunchline: "One person codes, the other brings snacks and unlimited hugs! ☕🍪",
+    category: "Couple Love",
+    tag: "Wholesome Rule",
+  },
+  {
+    id: "c6",
+    type: "couple_meme",
+    content: "You are the `break;` statement in my while(true) chaos.",
+    authorOrPunchline: "You always bring me back to calm. 🧘‍♀️✨",
+    category: "Couple Love",
+    tag: "Sweet Pick-up Line",
+  },
+  {
+    id: "c7",
+    type: "couple_meme",
+    content: "Even if my code throws an unhandled exception...",
+    authorOrPunchline: "You are always my `finally` block that stays. 🛡️❤️",
+    category: "Couple Love",
+    tag: "Sweet Pick-up Line",
+  },
+  {
+    id: "c8",
+    type: "couple_meme",
+    content: "Couples that LeetCode together...",
+    authorOrPunchline: "Get offers together and celebrate with bubble tea! 🧋🎉",
+    category: "Couple Love",
+    tag: "Couple Goals",
+  },
+
+  // --- Inspiring Developer Quotes ---
+  {
+    id: "q1",
+    type: "quote",
+    content: "First, solve the problem. Then, write the code.",
+    authorOrPunchline: "John Johnson",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  },
+  {
+    id: "q2",
+    type: "quote",
+    content: "Simplicity is prerequisite for reliability.",
+    authorOrPunchline: "Edsger W. Dijkstra",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  },
+  {
+    id: "q3",
+    type: "quote",
+    content: "Talk is cheap. Show me the code.",
+    authorOrPunchline: "Linus Torvalds",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  },
+  {
+    id: "q4",
+    type: "quote",
+    content: "Any fool can write code that a computer can understand. Good programmers write code that humans can understand.",
+    authorOrPunchline: "Martin Fowler",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  },
+  {
+    id: "q5",
+    type: "quote",
+    content: "Experience is the name everyone gives to their mistakes.",
+    authorOrPunchline: "Oscar Wilde (and every developer ever)",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  },
+  {
+    id: "q6",
+    type: "quote",
+    content: "The best error message is the one that never shows up.",
+    authorOrPunchline: "Thomas Fuchs",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  },
+  {
+    id: "q7",
+    type: "quote",
+    content: "Make it work, make it right, make it fast.",
+    authorOrPunchline: "Kent Beck",
+    category: "Inspiration",
+    tag: "Developer Quote",
+  }
+];
