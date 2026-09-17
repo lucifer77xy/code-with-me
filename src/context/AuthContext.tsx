@@ -23,6 +23,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const LOCAL_STORAGE_ACTIVE_USER_ID = "codetogether_active_user_id";
 const LOCAL_STORAGE_PROFILES = "codetogether_profiles";
 
+const normalizeProfiles = (loadedProfiles: Profile[]): Profile[] =>
+  loadedProfiles.map((profile, index) => ({
+    ...profile,
+    avatar_url: profile.avatar_url || (index === 0 ? "/boy-profile.jpg" : "/girl-profile.jpg"),
+  }));
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profiles, setProfiles] = useState<Profile[]>(INITIAL_PROFILES);
   const [activeUserId, setActiveUserId] = useState<string>(INITIAL_PROFILES[0].id);
@@ -48,7 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (isSupabaseActive && supabase) {
           const { data, error } = await supabase.from("profiles").select("*");
           if (!error && data && data.length >= 2) {
-            setProfiles(data as Profile[]);
+            setProfiles(normalizeProfiles(data as Profile[]));
           }
         } else {
           // Fallback to local storage
@@ -56,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const savedProfiles = localStorage.getItem(LOCAL_STORAGE_PROFILES);
           if (savedProfiles) {
             try {
-              setProfiles(JSON.parse(savedProfiles));
+              setProfiles(normalizeProfiles(JSON.parse(savedProfiles)));
             } catch (e) {
               console.error("Error parsing saved profiles", e);
             }
