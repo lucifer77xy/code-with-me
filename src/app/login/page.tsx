@@ -74,7 +74,7 @@ export default function LoginPage() {
                 className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/5 p-3 hover:border-rose-500/40 hover:bg-white/10 transition-all text-center group active:scale-95"
               >
                 <img
-                  src={p.avatar_url}
+                  src={p.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(p.name)}`}
                   alt={p.name}
                   className="h-10 w-10 rounded-full border border-white/20 bg-slate-800 object-cover group-hover:scale-105 transition-transform"
                 />

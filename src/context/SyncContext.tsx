@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { CodingSession, Weakpoint, CoupleNote, Badge, LiveSyncMessage } from "@/types";
-import { INITIAL_SESSIONS, INITIAL_WEAKPOINTS, INITIAL_NOTES } from "@/data/initialData";
+import { hasLegacySeedData, INITIAL_SESSIONS, INITIAL_WEAKPOINTS, INITIAL_NOTES } from "@/data/initialData";
 import { BADGES } from "@/data/badges";
 import { useAuth } from "./AuthContext";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -78,10 +78,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessions, setSessions] = useState<CodingSession[]>(INITIAL_SESSIONS);
   const [weakpoints, setWeakpoints] = useState<Weakpoint[]>(INITIAL_WEAKPOINTS);
   const [notes, setNotes] = useState<CoupleNote[]>(INITIAL_NOTES);
-  const [userBadges, setUserBadges] = useState<Record<string, string[]>>({
-    [currentUser.id]: ["first_10_hours", "night_owl", "streak_flame"],
-    [partnerUser.id]: ["first_10_hours", "quiz_champion", "streak_flame"],
-  });
+  const [userBadges, setUserBadges] = useState<Record<string, string[]>>({});
   const [recentlyUnlockedBadge, setRecentlyUnlockedBadge] = useState<Badge | null>(null);
 
   // Active user's timer
@@ -89,7 +86,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [timerMode, setTimerMode] = useState<"stopwatch" | "pomodoro">("pomodoro");
   const [pomodoroInitialMinutes, setPomodoroInitialMinutes] = useState<number>(25);
   const [timerSeconds, setTimerSeconds] = useState<number>(25 * 60);
-  const [timerTopic, setTimerTopic] = useState<string>("Full-Stack Feature Development");
+  const [timerTopic, setTimerTopic] = useState<string>("");
   const [timerCategory, setTimerCategory] = useState<CodingSession["category"]>("Web Dev");
 
   // Partner's live timer state
@@ -103,13 +100,14 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }>({
     isRunning: partnerUser.is_coding_now,
     mode: partnerUser.active_session_mode || "pomodoro",
-    topic: partnerUser.active_session_topic || "Next.js 14 App Router Optimization",
+    topic: partnerUser.active_session_topic || "",
     category: "Web Dev",
-    seconds: partnerUser.active_session_seconds || 1440,
+    seconds: partnerUser.active_session_seconds || 0,
     startedAt: partnerUser.active_session_started_at || undefined,
   });
 
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const timerLastUpdatedAtRef = useRef<number | null>(null);
 
   // Initialize BroadcastChannel for cross-tab realtime sync
   useEffect(() => {
@@ -132,15 +130,22 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     try {
       const savedSessions = localStorage.getItem(LOCAL_STORAGE_SESSIONS);
-      if (savedSessions) setSessions(JSON.parse(savedSessions));
-
       const savedWeakpoints = localStorage.getItem(LOCAL_STORAGE_WEAKPOINTS);
-      if (savedWeakpoints) setWeakpoints(JSON.parse(savedWeakpoints));
-
       const savedNotes = localStorage.getItem(LOCAL_STORAGE_NOTES);
-      if (savedNotes) setNotes(JSON.parse(savedNotes));
-
       const savedBadges = localStorage.getItem(LOCAL_STORAGE_BADGES);
+
+      const savedState = [savedSessions, savedWeakpoints, savedNotes, savedBadges];
+      if (savedState.some(hasLegacySeedData)) {
+        localStorage.removeItem(LOCAL_STORAGE_SESSIONS);
+        localStorage.removeItem(LOCAL_STORAGE_WEAKPOINTS);
+        localStorage.removeItem(LOCAL_STORAGE_NOTES);
+        localStorage.removeItem(LOCAL_STORAGE_BADGES);
+        return;
+      }
+
+      if (savedSessions) setSessions(JSON.parse(savedSessions));
+      if (savedWeakpoints) setWeakpoints(JSON.parse(savedWeakpoints));
+      if (savedNotes) setNotes(JSON.parse(savedNotes));
       if (savedBadges) setUserBadges(JSON.parse(savedBadges));
     } catch (e) {
       console.error("Failed loading local state", e);
@@ -247,38 +252,54 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Timer interval ticker
+  // Use elapsed wall-clock time so browser timer throttling does not pause the timer.
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setTimerSeconds((prev) => {
-          if (timerMode === "pomodoro") {
-            if (prev <= 1) {
-              // Pomodoro finished!
-              setIsTimerRunning(false);
-              triggerFloatingHearts();
-              toast.success("Pomodoro Focus Interval Complete! 🍅🎉", {
-                description: "Great focus! Log your session or take a 5 min break with your partner.",
-              });
-              broadcastMessage({
-                type: "TIMER_STOP",
-                payload: {},
-              });
-              return 0;
-            }
-            return prev - 1;
-          } else {
-            // Stopwatch counting up
-            return prev + 1;
-          }
-        });
-      }, 1000);
+    if (!isTimerRunning) {
+      timerLastUpdatedAtRef.current = null;
+      return;
     }
 
+    timerLastUpdatedAtRef.current = Date.now();
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const lastUpdatedAt = timerLastUpdatedAtRef.current;
+      if (lastUpdatedAt === null) {
+        timerLastUpdatedAtRef.current = now;
+        return;
+      }
+
+      const elapsedSeconds = Math.floor((now - lastUpdatedAt) / 1000);
+      if (elapsedSeconds <= 0) return;
+      timerLastUpdatedAtRef.current = lastUpdatedAt + elapsedSeconds * 1000;
+
+      setTimerSeconds((prev) => {
+        if (timerMode === "pomodoro") {
+          const nextSeconds = Math.max(0, prev - elapsedSeconds);
+          if (nextSeconds === 0) {
+            setIsTimerRunning(false);
+            triggerFloatingHearts();
+            toast.success("Pomodoro Focus Interval Complete! 🍅🎉", {
+              description: "Great focus! Log your session or take a 5 min break with your partner.",
+            });
+            broadcastMessage({
+              type: "TIMER_STOP",
+              payload: {},
+            });
+          }
+          return nextSeconds;
+        }
+
+        return prev + elapsedSeconds;
+      });
+    };
+
+    const interval = setInterval(updateTimer, 1000);
+    document.addEventListener("visibilitychange", updateTimer);
+
     return () => {
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", updateTimer);
     };
   }, [isTimerRunning, timerMode]);
 
@@ -639,13 +660,13 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const userProfile = [currentUser, partnerUser].find((p) => p.id === userId);
     const totalHours = userProfile?.total_hours || Number((userSessions.reduce((a, b) => a + b.duration_minutes, 0) / 60).toFixed(1));
-    const streakDays = userProfile?.current_streak || 1;
+    const streakDays = userProfile?.current_streak || 0;
 
     return {
       todayHours,
       weekHours,
       streakDays,
-      problemsCount: (userProfile?.problems_solved || 0) + problemsCount,
+      problemsCount,
       totalHours,
     };
   };

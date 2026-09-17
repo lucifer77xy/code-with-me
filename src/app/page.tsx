@@ -88,7 +88,7 @@ export default function HomePage() {
           <div className="rounded-3xl border border-violet-500/30 bg-slate-900/80 p-6 backdrop-blur-xl shadow-xl flex items-center justify-between">
             <div className="flex items-center gap-4">
               <img
-                src={currentUser.avatar_url}
+                src={currentUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(currentUser.name)}`}
                 alt={currentUser.name}
                 className="h-14 w-14 rounded-2xl border-2 border-violet-500/50 bg-slate-800 object-cover"
               />
@@ -122,7 +122,7 @@ export default function HomePage() {
           <div className="rounded-3xl border border-rose-500/30 bg-slate-900/80 p-6 backdrop-blur-xl shadow-xl flex items-center justify-between">
             <div className="flex items-center gap-4">
               <img
-                src={partnerUser.avatar_url}
+                src={partnerUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(partnerUser.name)}`}
                 alt={partnerUser.name}
                 className="h-14 w-14 rounded-2xl border-2 border-rose-500/50 bg-slate-800 object-cover"
               />

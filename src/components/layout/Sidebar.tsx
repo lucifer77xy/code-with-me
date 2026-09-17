@@ -132,12 +132,12 @@ export const Sidebar: React.FC = () => {
       <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-3 flex items-center gap-3">
         <div className="flex -space-x-2 overflow-hidden">
           <img
-            src={currentUser.avatar_url}
+            src={currentUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(currentUser.name)}`}
             alt={currentUser.name}
             className="inline-block h-8 w-8 rounded-full ring-2 ring-violet-500/60 bg-slate-800"
           />
           <img
-            src={partnerUser.avatar_url}
+            src={partnerUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(partnerUser.name)}`}
             alt={partnerUser.name}
             className="inline-block h-8 w-8 rounded-full ring-2 ring-rose-500/60 bg-slate-800"
           />

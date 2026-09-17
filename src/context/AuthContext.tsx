@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Profile } from "@/types";
-import { INITIAL_PROFILES } from "@/data/initialData";
+import { hasLegacySeedData, INITIAL_PROFILES } from "@/data/initialData";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 
@@ -29,6 +29,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const isSupabaseActive = isSupabaseConfigured();
 
+  const clearLegacyLocalState = () => {
+    const savedProfiles = localStorage.getItem(LOCAL_STORAGE_PROFILES);
+    if (hasLegacySeedData(savedProfiles)) {
+      localStorage.removeItem(LOCAL_STORAGE_PROFILES);
+      localStorage.removeItem(LOCAL_STORAGE_ACTIVE_USER_ID);
+      localStorage.removeItem("codetogether_sessions");
+      localStorage.removeItem("codetogether_weakpoints");
+      localStorage.removeItem("codetogether_notes");
+      localStorage.removeItem("codetogether_badges");
+    }
+  };
+
   // Load initial profiles from LocalStorage or Supabase
   useEffect(() => {
     const initProfiles = async () => {
@@ -40,6 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } else {
           // Fallback to local storage
+          clearLegacyLocalState();
           const savedProfiles = localStorage.getItem(LOCAL_STORAGE_PROFILES);
           if (savedProfiles) {
             try {
@@ -121,7 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success(`Welcome back, ${match.name}! ✨`);
       return true;
     }
-    toast.error("Email not found in couple profiles. Use Alex or Sam's email!");
+    toast.error("That email is not associated with a profile yet.");
     return false;
   };
 

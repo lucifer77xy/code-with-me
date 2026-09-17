@@ -102,7 +102,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <img
-                      src={currentUser.avatar_url}
+                      src={currentUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(currentUser.name)}`}
                       alt={currentUser.name}
                       className="h-14 w-14 rounded-2xl border-2 border-violet-500 bg-slate-800 object-cover"
                     />
@@ -134,7 +134,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <img
-                      src={partnerUser.avatar_url}
+                      src={partnerUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(partnerUser.name)}`}
                       alt={partnerUser.name}
                       className="h-14 w-14 rounded-2xl border-2 border-rose-500 bg-slate-800 object-cover"
                     />
@@ -241,7 +241,7 @@ export const LeaderboardView: React.FC = () => {
                   <div className="flex -space-x-1.5">
                     {isUnlockedByMe && (
                       <img
-                        src={currentUser.avatar_url}
+                        src={currentUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(currentUser.name)}`}
                         alt={currentUser.name}
                         title={`Unlocked by ${currentUser.name}`}
                         className="h-6 w-6 rounded-full border border-violet-500 bg-slate-800"
@@ -249,7 +249,7 @@ export const LeaderboardView: React.FC = () => {
                     )}
                     {isUnlockedByPartner && (
                       <img
-                        src={partnerUser.avatar_url}
+                        src={partnerUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(partnerUser.name)}`}
                         alt={partnerUser.name}
                         title={`Unlocked by ${partnerUser.name}`}
                         className="h-6 w-6 rounded-full border border-rose-500 bg-slate-800"

@@ -83,7 +83,7 @@ export const Header: React.FC = () => {
               {/* Avatar */}
               <div className="relative">
                 <img
-                  src={currentUser.avatar_url}
+                  src={currentUser.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(currentUser.name)}`}
                   alt={currentUser.name}
                   className="h-7 w-7 rounded-full border border-violet-400/40 bg-slate-800 object-cover"
                 />

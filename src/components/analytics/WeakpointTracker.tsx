@@ -173,7 +173,7 @@ export const WeakpointTracker: React.FC = () => {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <img
-                        src={owner.avatar_url}
+                        src={owner.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(owner.name)}`}
                         alt={owner.name}
                         className="h-6 w-6 rounded-full border border-white/20 bg-slate-800"
                       />

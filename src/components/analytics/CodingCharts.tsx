@@ -65,7 +65,7 @@ export const CodingCharts: React.FC = () => {
 
     return {
       name: cat,
-      value: Math.max(totalMins, 45), // baseline hours
+      value: totalMins,
       color: categoryColors[cat] || "#a855f7",
     };
   });
