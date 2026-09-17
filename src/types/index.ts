@@ -87,8 +87,16 @@ export interface CoupleNote {
 }
 
 export interface LiveSyncMessage {
-  type: 'TIMER_UPDATE' | 'TIMER_STOP' | 'SESSION_SAVED' | 'NUDGE' | 'WEAKPOINT_UPDATE' | 'PROFILE_UPDATE';
+  type: 'TIMER_UPDATE' | 'TIMER_STOP' | 'SESSION_SAVED' | 'NUDGE' | 'WEAKPOINT_UPDATE' | 'PROFILE_UPDATE' | 'CHAT_MESSAGE';
   senderId: string;
   payload: any;
   timestamp: number;
+}
+
+export interface PartnerChatMessage {
+  id: string;
+  sender: string;
+  senderId: string;
+  text: string;
+  timestamp: string;
 }

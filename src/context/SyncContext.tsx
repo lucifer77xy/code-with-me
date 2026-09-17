@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
-import { CodingSession, Weakpoint, CoupleNote, Badge, LiveSyncMessage } from "@/types";
+import { CodingSession, Weakpoint, CoupleNote, Badge, LiveSyncMessage, PartnerChatMessage, Profile } from "@/types";
 import { hasLegacySeedData, INITIAL_SESSIONS, INITIAL_WEAKPOINTS, INITIAL_NOTES } from "@/data/initialData";
 import { BADGES } from "@/data/badges";
 import { useAuth } from "./AuthContext";
@@ -55,6 +55,11 @@ interface SyncContextType {
   recentlyUnlockedBadge: Badge | null;
   closeBadgeModal: () => void;
 
+  // Partner chat
+  messages: PartnerChatMessage[];
+  sendMessage: (text: string) => void;
+  updateProfileLive: (profileId: string, updated: Partial<Profile>) => Promise<void>;
+
   // Stats calculation
   getPartnerStats: (userId: string) => {
     todayHours: number;
@@ -71,6 +76,7 @@ const LOCAL_STORAGE_SESSIONS = "codetogether_sessions";
 const LOCAL_STORAGE_WEAKPOINTS = "codetogether_weakpoints";
 const LOCAL_STORAGE_NOTES = "codetogether_notes";
 const LOCAL_STORAGE_BADGES = "codetogether_badges";
+const LOCAL_STORAGE_MESSAGES = "codetogether_messages";
 
 export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, partnerUser, updateProfile, isSupabaseActive } = useAuth();
@@ -80,6 +86,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notes, setNotes] = useState<CoupleNote[]>(INITIAL_NOTES);
   const [userBadges, setUserBadges] = useState<Record<string, string[]>>({});
   const [recentlyUnlockedBadge, setRecentlyUnlockedBadge] = useState<Badge | null>(null);
+  const [messages, setMessages] = useState<PartnerChatMessage[]>([]);
 
   // Active user's timer
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
@@ -133,13 +140,15 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const savedWeakpoints = localStorage.getItem(LOCAL_STORAGE_WEAKPOINTS);
       const savedNotes = localStorage.getItem(LOCAL_STORAGE_NOTES);
       const savedBadges = localStorage.getItem(LOCAL_STORAGE_BADGES);
+      const savedMessages = localStorage.getItem(LOCAL_STORAGE_MESSAGES);
 
-      const savedState = [savedSessions, savedWeakpoints, savedNotes, savedBadges];
+      const savedState = [savedSessions, savedWeakpoints, savedNotes, savedBadges, savedMessages];
       if (savedState.some(hasLegacySeedData)) {
         localStorage.removeItem(LOCAL_STORAGE_SESSIONS);
         localStorage.removeItem(LOCAL_STORAGE_WEAKPOINTS);
         localStorage.removeItem(LOCAL_STORAGE_NOTES);
         localStorage.removeItem(LOCAL_STORAGE_BADGES);
+        localStorage.removeItem(LOCAL_STORAGE_MESSAGES);
         return;
       }
 
@@ -147,6 +156,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (savedWeakpoints) setWeakpoints(JSON.parse(savedWeakpoints));
       if (savedNotes) setNotes(JSON.parse(savedNotes));
       if (savedBadges) setUserBadges(JSON.parse(savedBadges));
+      if (savedMessages) setMessages(JSON.parse(savedMessages));
     } catch (e) {
       console.error("Failed loading local state", e);
     }
@@ -232,9 +242,48 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setWeakpoints(msg.payload);
         break;
 
+      case "PROFILE_UPDATE":
+        updateProfile(msg.payload.updated, msg.payload.profileId);
+        break;
+
+      case "CHAT_MESSAGE":
+        setMessages((prev) => {
+          if (prev.some((message) => message.id === msg.payload.id)) return prev;
+          const next = [...prev, msg.payload];
+          localStorage.setItem(LOCAL_STORAGE_MESSAGES, JSON.stringify(next));
+          return next;
+        });
+        break;
+
       default:
         break;
     }
+  };
+
+  const sendMessage = (text: string) => {
+    const message: PartnerChatMessage = {
+      id: generateUUID(),
+      sender: currentUser.name,
+      senderId: currentUser.id,
+      text: text.trim(),
+      timestamp: new Date().toISOString(),
+    };
+    if (!message.text) return;
+
+    setMessages((prev) => {
+      const next = [...prev, message];
+      localStorage.setItem(LOCAL_STORAGE_MESSAGES, JSON.stringify(next));
+      return next;
+    });
+    broadcastMessage({ type: "CHAT_MESSAGE", payload: message });
+  };
+
+  const updateProfileLive = async (profileId: string, updated: Partial<Profile>) => {
+    await updateProfile(updated, profileId);
+    broadcastMessage({
+      type: "PROFILE_UPDATE",
+      payload: { profileId, updated },
+    });
   };
 
   // Trigger confetti and floating hearts
@@ -695,6 +744,9 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendNote,
         markNoteRead,
         sendLoveNudge,
+        messages,
+        sendMessage,
+        updateProfileLive,
         userBadges,
         unlockBadge,
         recentlyUnlockedBadge,

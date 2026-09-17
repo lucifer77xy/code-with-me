@@ -9,7 +9,7 @@ export const INITIAL_PROFILES: Profile[] = [
   {
     id: EMPTY_PROFILE_IDS.current,
     email: "",
-    name: "Your Profile",
+    name: "You",
     partner_label: "You",
     avatar_url: "",
     motto: "Start coding together, one session at a time.",
@@ -24,7 +24,7 @@ export const INITIAL_PROFILES: Profile[] = [
   {
     id: EMPTY_PROFILE_IDS.partner,
     email: "",
-    name: "Partner Profile",
+    name: "Partner",
     partner_label: "Partner",
     avatar_url: "",
     motto: "Invite your partner to start tracking together.",

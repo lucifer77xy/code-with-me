@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { DualTracker } from "@/components/dashboard/DualTracker";
 import { JokeQuoteWidget } from "@/components/motivation/JokeQuoteWidget";
+import { ChatSidebar } from "@/components/dashboard/ChatSidebar";
 
 export default function DashboardPage() {
   return (
@@ -22,6 +23,7 @@ export default function DashboardPage() {
       </div>
 
       <MobileNav />
+      <ChatSidebar />
     </div>
   );
 }

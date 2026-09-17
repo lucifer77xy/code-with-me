@@ -11,7 +11,7 @@ interface AuthContextType {
   partnerUser: Profile;
   allProfiles: Profile[];
   switchUser: (userId?: string) => void;
-  updateProfile: (updated: Partial<Profile>) => Promise<void>;
+  updateProfile: (updated: Partial<Profile>, profileId?: string) => Promise<void>;
   isSupabaseActive: boolean;
   isLoading: boolean;
   loginWithEmail: (email: string) => Promise<boolean>;
@@ -104,9 +104,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const updateProfile = async (updated: Partial<Profile>) => {
+  const updateProfile = async (updated: Partial<Profile>, profileId = currentUser.id) => {
     const updatedProfiles = profiles.map((p) =>
-      p.id === currentUser.id ? { ...p, ...updated, updated_at: new Date().toISOString() } : p
+      p.id === profileId ? { ...p, ...updated, updated_at: new Date().toISOString() } : p
     );
     persistProfilesLocally(updatedProfiles);
 
@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase
           .from("profiles")
           .update(updated)
-          .eq("id", currentUser.id);
+          .eq("id", profileId);
       } catch (err) {
         console.error("Supabase profile update failed:", err);
       }

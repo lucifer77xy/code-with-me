@@ -4,13 +4,15 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useSync } from "@/context/SyncContext";
-import { Heart, RefreshCw, Sparkles, Wifi, Radio, Bell } from "lucide-react";
+import { Heart, RefreshCw, Sparkles, Radio, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { ProfileEditor } from "@/components/dashboard/ProfileEditor";
 
 export const Header: React.FC = () => {
   const { currentUser, partnerUser, switchUser, isSupabaseActive } = useAuth();
   const { sendLoveNudge, partnerTimerState } = useSync();
   const [isNudging, setIsNudging] = useState(false);
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
 
   const handleQuickNudge = () => {
     setIsNudging(true);
@@ -25,16 +27,9 @@ export const Header: React.FC = () => {
         {/* Logo / Brand */}
         <div className="flex items-center gap-3">
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-rose-500 p-0.5 shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform duration-300">
-              <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-slate-950">
-                <Heart className="h-5 w-5 fill-rose-500 text-rose-500 animate-pulse" />
-              </div>
-            </div>
+            <img src="/logo.svg" alt="CodeTogether Logo" className="h-10 w-10 rounded-lg object-contain transition-transform duration-300 group-hover:scale-105" />
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
-                <span className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-violet-400 via-pink-400 to-rose-400 bg-clip-text text-transparent">
-                  CodeTogether
-                </span>
                 <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400 border border-rose-500/20">
                   Couple Portal
                 </span>
@@ -77,6 +72,15 @@ export const Header: React.FC = () => {
             <Heart className="h-3.5 w-3.5 fill-rose-500 text-rose-500" />
           </button>
 
+          <button
+            onClick={() => setIsProfileEditorOpen(true)}
+            title="Edit profiles"
+            aria-label="Edit profiles"
+            className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+
           {/* User profile toggle switcher */}
           <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/90 p-1 pl-2">
             <div className="flex items-center gap-2">
@@ -112,6 +116,7 @@ export const Header: React.FC = () => {
 
         </div>
       </div>
+      <ProfileEditor isOpen={isProfileEditorOpen} onClose={() => setIsProfileEditorOpen(false)} />
     </header>
   );
 };

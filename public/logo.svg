@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 768" role="img" aria-labelledby="title desc">
+  <title id="title">CodeTogether logo</title>
+  <desc id="desc">A technology circuit pattern shaped like a heart</desc>
+  <rect width="768" height="768" rx="48" fill="#fff"/>
+  <path fill="#000" d="M384 664 115 395c-55-55-55-145 0-200 54-55 143-55 198 0l71 71 71-71c55-55 144-55 198 0 55 55 55 145 0 200L384 664Z"/>
+  <g fill="none" stroke="#fff" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M111 278h220v52h53V128"/>
+    <path d="M657 250 558 349H442v111h-58v-94H240l-99 99"/>
+    <path d="M384 460v105"/>
+    <path d="M442 349h-116v101h116"/>
+    <path d="M442 450h121v49h92"/>
+  </g>
+  <g fill="#000" stroke="#fff" stroke-width="16">
+    <circle cx="111" cy="278" r="31"/>
+    <circle cx="384" cy="128" r="31"/>
+    <circle cx="657" cy="250" r="31"/>
+    <circle cx="141" cy="465" r="31"/>
+    <circle cx="384" cy="565" r="31"/>
+    <circle cx="655" cy="499" r="31"/>
+    <circle cx="384" cy="399" r="30"/>
+  </g>
+</svg>

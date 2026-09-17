@@ -11,6 +11,9 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "CodeTogether | Joint Coding Tracker & Learning Portal",
   description: "Synchronized dual-tracker, pomodoro focus, performance analytics, weakpoint radar, and quizzes for couples learning to code together.",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
