@@ -48,15 +48,43 @@ alter table public.profiles add column if not exists active_session_seconds inte
 alter table public.profiles add column if not exists active_session_started_at timestamptz;
 alter table public.profiles add column if not exists updated_at timestamptz default now();
 
+-- Drop NOT NULL constraint on legacy columns (such as username) if present
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'username'
+  ) then
+    alter table public.profiles alter column username drop not null;
+  end if;
+end $$;
+
 -- Seed initial couple profiles so the dashboard loads with synchronized profiles
-insert into public.profiles (id, name, email, partner_label, avatar_url, motto, theme_color)
-values
-  ('00000000-0000-0000-0000-000000000001', 'Alex', 'alex@codetogether.love', 'Boyfriend', '/boy-profile.jpg', 'Building the future together 🚀', 'violet'),
-  ('00000000-0000-0000-0000-000000000002', 'Sam', 'sam@codetogether.love', 'Girlfriend', '/girl-profile.jpg', 'One line of code at a time ✨', 'rose')
-on conflict (id) do update set
-  name = excluded.name,
-  partner_label = excluded.partner_label,
-  updated_at = now();
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'username'
+  ) then
+    insert into public.profiles (id, username, name, email, partner_label, avatar_url, motto, theme_color)
+    values
+      ('00000000-0000-0000-0000-000000000001', 'alex', 'Alex', 'alex@codetogether.love', 'Boyfriend', '/boy-profile.jpg', 'Building the future together 🚀', 'violet'),
+      ('00000000-0000-0000-0000-000000000002', 'sam', 'Sam', 'sam@codetogether.love', 'Girlfriend', '/girl-profile.jpg', 'One line of code at a time ✨', 'rose')
+    on conflict (id) do update set
+      name = excluded.name,
+      partner_label = excluded.partner_label,
+      updated_at = now();
+  else
+    insert into public.profiles (id, name, email, partner_label, avatar_url, motto, theme_color)
+    values
+      ('00000000-0000-0000-0000-000000000001', 'Alex', 'alex@codetogether.love', 'Boyfriend', '/boy-profile.jpg', 'Building the future together 🚀', 'violet'),
+      ('00000000-0000-0000-0000-000000000002', 'Sam', 'sam@codetogether.love', 'Girlfriend', '/girl-profile.jpg', 'One line of code at a time ✨', 'rose')
+    on conflict (id) do update set
+      name = excluded.name,
+      partner_label = excluded.partner_label,
+      updated_at = now();
+  end if;
+end $$;
 
 -- ==============================================================================
 -- 2. Shared Practice Sessions Table (Active live collaborative room & editor)
