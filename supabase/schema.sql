@@ -48,6 +48,10 @@ alter table public.profiles add column if not exists active_session_seconds inte
 alter table public.profiles add column if not exists active_session_started_at timestamptz;
 alter table public.profiles add column if not exists updated_at timestamptz default now();
 
+-- Drop restrictive foreign key constraints linking id directly to auth.users
+alter table public.profiles drop constraint if exists profiles_id_fkey;
+alter table public.profiles drop constraint if exists profiles_user_id_fkey;
+
 -- Drop NOT NULL constraint on legacy columns (such as username) if present
 do $$
 begin
