@@ -154,18 +154,17 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
             supabase.from("partner_messages").select("*").order("created_at", { ascending: true }),
           ]);
 
-          const failed = [sessionResult, weakpointResult, noteResult, badgeResult, messageResult].find((result) => result.error);
-          if (failed?.error) throw failed.error;
-
-          setSessions((sessionResult.data || []) as CodingSession[]);
-          setWeakpoints((weakpointResult.data || []) as Weakpoint[]);
-          setNotes((noteResult.data || []) as CoupleNote[]);
-          const badges = (badgeResult.data || []).reduce<Record<string, string[]>>((result, badge) => {
-            result[badge.user_id] = [...(result[badge.user_id] || []), badge.badge_key];
-            return result;
-          }, {});
-          setUserBadges(badges);
-          setMessages((messageResult.data || []).map(mapStoredMessage));
+          if (sessionResult.data) setSessions(sessionResult.data as CodingSession[]);
+          if (weakpointResult.data) setWeakpoints(weakpointResult.data as Weakpoint[]);
+          if (noteResult.data) setNotes(noteResult.data as CoupleNote[]);
+          if (badgeResult.data) {
+            const badges = badgeResult.data.reduce<Record<string, string[]>>((result, badge) => {
+              result[badge.user_id] = [...(result[badge.user_id] || []), badge.badge_key];
+              return result;
+            }, {});
+            setUserBadges(badges);
+          }
+          if (messageResult.data) setMessages(messageResult.data.map(mapStoredMessage));
           return;
         }
 

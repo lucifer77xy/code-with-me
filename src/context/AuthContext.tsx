@@ -55,6 +55,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { data, error } = await supabase.from("profiles").select("*");
           if (!error && data && data.length >= 2) {
             setProfiles(normalizeProfiles(data as Profile[]));
+          } else {
+            const savedProfiles = localStorage.getItem(LOCAL_STORAGE_PROFILES);
+            if (savedProfiles) {
+              try {
+                setProfiles(normalizeProfiles(JSON.parse(savedProfiles)));
+              } catch (e) {}
+            }
           }
         } else {
           // Fallback to local storage
@@ -147,12 +154,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { error } = await supabase
           .from("profiles")
-          .update({ ...updated, updated_at: new Date().toISOString() })
-          .eq("id", profileId);
-        if (error) throw error;
+          .upsert({ id: profileId, ...updated, updated_at: new Date().toISOString() });
+        if (error) {
+          console.warn("Supabase profile update warning:", error.message);
+        }
       } catch (err) {
-        console.error("Supabase profile update failed:", err);
-        toast.error("Could not save this profile change to the shared backend.");
+        console.warn("Supabase profile update failed:", err);
       }
     }
   };
