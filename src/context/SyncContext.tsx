@@ -78,6 +78,14 @@ const LOCAL_STORAGE_NOTES = "codetogether_notes";
 const LOCAL_STORAGE_BADGES = "codetogether_badges";
 const LOCAL_STORAGE_MESSAGES = "codetogether_messages";
 
+const mapStoredMessage = (message: { id: string; sender: string; sender_id: string; text: string; created_at: string }): PartnerChatMessage => ({
+  id: message.id,
+  sender: message.sender,
+  senderId: message.sender_id,
+  text: message.text,
+  timestamp: message.created_at,
+});
+
 export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, partnerUser, updateProfile, isSupabaseActive } = useAuth();
 
@@ -133,9 +141,34 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser.id]);
 
-  // Load from LocalStorage
+  // Load shared data from Supabase. LocalStorage is only a fallback for offline/demo mode.
   useEffect(() => {
-    try {
+    const loadState = async () => {
+      try {
+        if (isSupabaseActive && supabase) {
+          const [sessionResult, weakpointResult, noteResult, badgeResult, messageResult] = await Promise.all([
+            supabase.from("coding_sessions").select("*").order("created_at", { ascending: false }),
+            supabase.from("weakpoints").select("*").order("created_at", { ascending: false }),
+            supabase.from("couple_notes").select("*").order("created_at", { ascending: false }),
+            supabase.from("user_badges").select("*").order("unlocked_at", { ascending: false }),
+            supabase.from("partner_messages").select("*").order("created_at", { ascending: true }),
+          ]);
+
+          const failed = [sessionResult, weakpointResult, noteResult, badgeResult, messageResult].find((result) => result.error);
+          if (failed?.error) throw failed.error;
+
+          setSessions((sessionResult.data || []) as CodingSession[]);
+          setWeakpoints((weakpointResult.data || []) as Weakpoint[]);
+          setNotes((noteResult.data || []) as CoupleNote[]);
+          const badges = (badgeResult.data || []).reduce<Record<string, string[]>>((result, badge) => {
+            result[badge.user_id] = [...(result[badge.user_id] || []), badge.badge_key];
+            return result;
+          }, {});
+          setUserBadges(badges);
+          setMessages((messageResult.data || []).map(mapStoredMessage));
+          return;
+        }
+
       const savedSessions = localStorage.getItem(LOCAL_STORAGE_SESSIONS);
       const savedWeakpoints = localStorage.getItem(LOCAL_STORAGE_WEAKPOINTS);
       const savedNotes = localStorage.getItem(LOCAL_STORAGE_NOTES);
@@ -157,10 +190,14 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (savedNotes) setNotes(JSON.parse(savedNotes));
       if (savedBadges) setUserBadges(JSON.parse(savedBadges));
       if (savedMessages) setMessages(JSON.parse(savedMessages));
-    } catch (e) {
-      console.error("Failed loading local state", e);
-    }
-  }, []);
+      } catch (e) {
+        console.error("Failed loading shared state", e);
+        toast.error("Shared data could not be loaded. Check the Supabase configuration.");
+      }
+    };
+
+    void loadState();
+  }, [isSupabaseActive]);
 
   // Set up Supabase Realtime subscription if available
   useEffect(() => {
@@ -168,6 +205,46 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const channel = supabase
       .channel("public-realtime-room")
+      .on("postgres_changes", { event: "*", schema: "public", table: "coding_sessions" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setSessions((previous) => previous.filter((session) => session.id !== payload.old.id));
+          return;
+        }
+        const session = payload.new as CodingSession;
+        setSessions((previous) => [session, ...previous.filter((item) => item.id !== session.id)]);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "weakpoints" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setWeakpoints((previous) => previous.filter((weakpoint) => weakpoint.id !== payload.old.id));
+          return;
+        }
+        const weakpoint = payload.new as Weakpoint;
+        setWeakpoints((previous) => [weakpoint, ...previous.filter((item) => item.id !== weakpoint.id)]);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "couple_notes" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setNotes((previous) => previous.filter((note) => note.id !== payload.old.id));
+          return;
+        }
+        const note = payload.new as CoupleNote;
+        setNotes((previous) => [note, ...previous.filter((item) => item.id !== note.id)]);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_badges" }, (payload) => {
+        if (payload.eventType === "DELETE") return;
+        const badge = payload.new as { user_id: string; badge_key: string };
+        setUserBadges((previous) => ({
+          ...previous,
+          [badge.user_id]: Array.from(new Set([...(previous[badge.user_id] || []), badge.badge_key])),
+        }));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "partner_messages" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setMessages((previous) => previous.filter((message) => message.id !== payload.old.id));
+          return;
+        }
+        const message = mapStoredMessage(payload.new as { id: string; sender: string; sender_id: string; text: string; created_at: string });
+        setMessages((previous) => [...previous.filter((item) => item.id !== message.id), message]);
+      })
       .on("broadcast", { event: "sync-event" }, (payload) => {
         handleIncomingSync(payload.payload as LiveSyncMessage);
       })
@@ -243,7 +320,11 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         break;
 
       case "PROFILE_UPDATE":
-        updateProfile(msg.payload.updated, msg.payload.profileId);
+        if (msg.payload?.updated?.name) {
+          toast.info(`${msg.payload.updated.name} updated their profile! ✨`, {
+            description: msg.payload.updated.motto ? `"${msg.payload.updated.motto}"` : undefined,
+          });
+        }
         break;
 
       case "CHAT_MESSAGE":
@@ -275,6 +356,20 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(LOCAL_STORAGE_MESSAGES, JSON.stringify(next));
       return next;
     });
+    if (isSupabaseActive && supabase) {
+      void supabase.from("partner_messages").insert({
+        id: message.id,
+        sender_id: message.senderId,
+        sender: message.sender,
+        text: message.text,
+        created_at: message.timestamp,
+      }).then(({ error }) => {
+        if (error) {
+          console.error(error);
+          toast.error("Message was not saved to the shared backend.");
+        }
+      });
+    }
     broadcastMessage({ type: "CHAT_MESSAGE", payload: message });
   };
 
@@ -497,9 +592,12 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Supabase persist
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from("coding_sessions").insert(newSession);
+        const { error } = await supabase.from("coding_sessions").insert(newSession);
+        if (error) throw error;
       } catch (e) {
         console.error(e);
+        toast.error("Session was not saved to the shared backend.");
+        return;
       }
     }
 
@@ -534,8 +632,12 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from("weakpoints").insert(newWp);
-      } catch (e) {}
+        const { error } = await supabase.from("weakpoints").insert(newWp);
+        if (error) throw error;
+      } catch (e) {
+        console.error(e);
+        toast.error("Weakpoint was not saved to the shared backend.");
+      }
     }
 
     broadcastMessage({
@@ -563,8 +665,12 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from("weakpoints").update({ status }).eq("id", id);
-      } catch (e) {}
+        const { error } = await supabase.from("weakpoints").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+        if (error) throw error;
+      } catch (e) {
+        console.error(e);
+        toast.error("Weakpoint status was not saved to the shared backend.");
+      }
     }
 
     broadcastMessage({
@@ -582,8 +688,12 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from("weakpoints").update({ partner_cheer: cheer }).eq("id", id);
-      } catch (e) {}
+        const { error } = await supabase.from("weakpoints").update({ partner_cheer: cheer, updated_at: new Date().toISOString() }).eq("id", id);
+        if (error) throw error;
+      } catch (e) {
+        console.error(e);
+        toast.error("Encouragement was not saved to the shared backend.");
+      }
     }
 
     broadcastMessage({
@@ -614,8 +724,12 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from("couple_notes").insert(newNote);
-      } catch (e) {}
+        const { error } = await supabase.from("couple_notes").insert(newNote);
+        if (error) throw error;
+      } catch (e) {
+        console.error(e);
+        toast.error("Note was not saved to the shared backend.");
+      }
     }
 
     broadcastMessage({
@@ -636,6 +750,14 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       localStorage.setItem(LOCAL_STORAGE_NOTES, JSON.stringify(updated));
     } catch (e) {}
+
+    if (isSupabaseActive && supabase) {
+      const { error } = await supabase.from("couple_notes").update({ is_read: true }).eq("id", id);
+      if (error) {
+        console.error(error);
+        toast.error("Read status was not saved to the shared backend.");
+      }
+    }
   };
 
   const sendLoveNudge = (customMessage?: string, emoji = "💖") => {
@@ -673,6 +795,15 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         localStorage.setItem(LOCAL_STORAGE_BADGES, JSON.stringify(updated));
       } catch (e) {}
+
+      if (isSupabaseActive && supabase) {
+        void supabase.from("user_badges").insert({ user_id: userId, badge_key: badgeKey }).then(({ error }) => {
+          if (error && error.code !== "23505") {
+            console.error(error);
+            toast.error("Badge was not saved to the shared backend.");
+          }
+        });
+      }
 
       const foundBadge = BADGES.find((b) => b.key === badgeKey);
       if (foundBadge && userId === currentUser.id) {

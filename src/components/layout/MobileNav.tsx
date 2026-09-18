@@ -3,11 +3,12 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BarChart3, HelpCircle, Trophy, MessageSquareHeart } from "lucide-react";
+import { LayoutDashboard, Code2, BarChart3, HelpCircle, Trophy, MessageSquareHeart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Tracker", icon: LayoutDashboard },
+  { href: "/practice", label: "Code", icon: Code2 },
   { href: "/analytics", label: "Radar", icon: BarChart3 },
   { href: "/quiz", label: "Quiz", icon: HelpCircle },
   { href: "/leaderboard", label: "Rivalry", icon: Trophy },

@@ -87,7 +87,16 @@ export interface CoupleNote {
 }
 
 export interface LiveSyncMessage {
-  type: 'TIMER_UPDATE' | 'TIMER_STOP' | 'SESSION_SAVED' | 'NUDGE' | 'WEAKPOINT_UPDATE' | 'PROFILE_UPDATE' | 'CHAT_MESSAGE';
+  type: 
+    | 'TIMER_UPDATE' 
+    | 'TIMER_STOP' 
+    | 'SESSION_SAVED' 
+    | 'NUDGE' 
+    | 'WEAKPOINT_UPDATE' 
+    | 'PROFILE_UPDATE' 
+    | 'CHAT_MESSAGE'
+    | 'CODE_UPDATE'
+    | 'CHALLENGE_COMPLETED';
   senderId: string;
   payload: any;
   timestamp: number;
@@ -100,3 +109,46 @@ export interface PartnerChatMessage {
   text: string;
   timestamp: string;
 }
+
+// 8. Practice Sessions (Shared room/active editor)
+export interface PracticeSession {
+  id: string;
+  user_id: string;
+  display_name: string;
+  code_snippet: string;
+  timer_duration_seconds: number;
+  completed_at?: string | null;
+  status: 'active' | 'paused' | 'completed';
+  challenge_title?: string;
+  language?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 9. Practice History (Shared completed logs)
+export interface PracticeHistory {
+  id: string;
+  user_id: string;
+  display_name: string;
+  code_snippet: string;
+  timer_duration_seconds: number;
+  completed_at: string;
+  status: 'completed' | 'in_progress' | 'passed' | 'failed';
+  challenge_title?: string;
+  language?: string;
+  created_at?: string;
+}
+
+// 10. Presence User
+export interface PresenceUser {
+  userId: string;
+  displayName: string;
+  avatarUrl?: string;
+  partnerLabel?: string;
+  isOnline: boolean;
+  isCoding: boolean;
+  isTyping?: boolean;
+  activeTopic?: string;
+  lastActive: string;
+}
+

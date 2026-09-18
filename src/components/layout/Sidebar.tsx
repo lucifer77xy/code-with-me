@@ -14,7 +14,8 @@ import {
   Flame, 
   Clock, 
   Sparkles,
-  Heart
+  Heart,
+  Code2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,12 @@ const NAV_ITEMS = [
     label: "Dual Tracker",
     icon: LayoutDashboard,
     badge: "Live",
+  },
+  {
+    href: "/practice",
+    label: "Pair Code Room",
+    icon: Code2,
+    badge: "Sync",
   },
   {
     href: "/analytics",

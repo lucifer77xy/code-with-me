@@ -19,6 +19,7 @@ import {
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { generateUUID } from "@/lib/utils";
 import confetti from "canvas-confetti";
+import { toast } from "sonner";
 
 type QuizCategory = QuizQuestion["category"];
 
@@ -126,9 +127,11 @@ export const QuizModule: React.FC = () => {
 
     if (isSupabaseConfigured() && supabase) {
       try {
-        await supabase.from("quiz_results").insert(result);
+        const { error } = await supabase.from("quiz_results").insert(result);
+        if (error) throw error;
       } catch (e) {
         console.error(e);
+        toast.error("Quiz result was not saved to the shared backend.");
       }
     }
   };

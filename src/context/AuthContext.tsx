@@ -82,6 +82,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initProfiles();
   }, [isSupabaseActive]);
 
+  // Keep profile names and details live in every open browser.
+  useEffect(() => {
+    if (!isSupabaseActive || !supabase) return;
+
+    const channel = supabase
+      .channel("profiles-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setProfiles((previous) => previous.filter((profile) => profile.id !== payload.old.id));
+          return;
+        }
+
+        const nextProfile = normalizeProfiles([payload.new as Profile])[0];
+        setProfiles((previous) => {
+          const exists = previous.some((profile) => profile.id === nextProfile.id);
+          return exists
+            ? previous.map((profile) => profile.id === nextProfile.id ? { ...profile, ...nextProfile } : profile)
+            : [...previous, nextProfile];
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, [isSupabaseActive]);
+
   // Persist profiles when changed in local mode
   const persistProfilesLocally = (newProfiles: Profile[]) => {
     setProfiles(newProfiles);
@@ -118,12 +145,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase
+        const { error } = await supabase
           .from("profiles")
-          .update(updated)
+          .update({ ...updated, updated_at: new Date().toISOString() })
           .eq("id", profileId);
+        if (error) throw error;
       } catch (err) {
         console.error("Supabase profile update failed:", err);
+        toast.error("Could not save this profile change to the shared backend.");
       }
     }
   };
