@@ -37,10 +37,10 @@ export default function PracticePage() {
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-rose-500/20 px-3 py-0.5 text-xs font-semibold text-rose-300 border border-rose-500/30 flex items-center gap-1.5">
                     <Radio className="h-3 w-3 animate-pulse text-rose-400" />
-                    Live Supabase Realtime Room
+                    Live Firebase Realtime Room
                   </span>
                   <span className="text-xs text-slate-400">
-                    Shared WebSocket Collaboration
+                    Firestore Live Editor & Sync
                   </span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">

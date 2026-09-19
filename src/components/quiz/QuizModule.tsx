@@ -16,7 +16,7 @@ import {
   RotateCcw,
   BookOpen
 } from "lucide-react";
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { saveFirestoreQuizResult } from "@/lib/firestoreService";
 import { generateUUID } from "@/lib/utils";
 import confetti from "canvas-confetti";
 import { toast } from "sonner";
@@ -125,15 +125,7 @@ export const QuizModule: React.FC = () => {
       created_at: new Date().toISOString(),
     };
 
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        const { error } = await supabase.from("quiz_results").insert(result);
-        if (error) throw error;
-      } catch (e) {
-        console.error(e);
-        toast.error("Quiz result was not saved to the shared backend.");
-      }
-    }
+    void saveFirestoreQuizResult(result);
   };
 
   const restartQuiz = () => {

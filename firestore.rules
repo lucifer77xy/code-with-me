@@ -1,0 +1,101 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isMember(data) {
+      return isAuthenticated() && (
+        (data.members != null && request.auth.uid in data.members) ||
+        (data.user_id != null && request.auth.uid == data.user_id) ||
+        (data.userId != null && request.auth.uid == data.userId) ||
+        (data.ownerId != null && request.auth.uid == data.ownerId) ||
+        (data.partnerId != null && request.auth.uid == data.partnerId) ||
+        (data.senderId != null && request.auth.uid == data.senderId) ||
+        (data.assignedTo != null && request.auth.uid == data.assignedTo)
+      );
+    }
+
+    // User profiles & presence
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || resource == null);
+    }
+    
+    // User presence
+    match /presence/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || resource == null);
+    }
+
+    // Shared Couple Workspaces
+    match /workspaces/{workspaceId} {
+      allow read, write: if isAuthenticated() && (
+        resource == null ||
+        request.auth.uid in resource.data.members ||
+        request.auth.uid in request.resource.data.members
+      );
+      
+      // Workspace subcollections
+      match /{subcollection}/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Coding sessions
+    match /codingSessions/{sessionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Practice history & active code sessions
+    match /practiceHistory/{historyId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /practiceSessions/{sessionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Weak points tracker
+    match /weakpoints/{weakpointId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Notes and love nudges
+    match /notes/{noteId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Partner chat messages
+    match /messages/{messageId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Badges and achievements
+    match /badges/{badgeId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Shared progress
+    match /sharedProgress/{progressId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Analytics
+    match /analytics/{analyticsId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Quiz results
+    match /quizResults/{resultId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

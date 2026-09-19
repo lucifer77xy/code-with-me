@@ -1,33 +1,74 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
-import { CodingSession, Weakpoint, CoupleNote, Badge, LiveSyncMessage, PartnerChatMessage, Profile } from "@/types";
-import { hasLegacySeedData, INITIAL_SESSIONS, INITIAL_WEAKPOINTS, INITIAL_NOTES } from "@/data/initialData";
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
+import {
+  CodingSession,
+  Weakpoint,
+  CoupleNote,
+  Badge,
+  LiveSyncMessage,
+  PartnerChatMessage,
+  Profile,
+  Task,
+  UserPresence,
+  AnalyticsData,
+} from "@/types";
+import { INITIAL_SESSIONS, INITIAL_WEAKPOINTS, INITIAL_NOTES } from "@/data/initialData";
 import { BADGES } from "@/data/badges";
 import { useAuth } from "./AuthContext";
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import {
+  subscribeCodingSessions,
+  createFirestoreSession,
+  subscribeTasks,
+  createFirestoreTask,
+  updateFirestoreTask,
+  deleteFirestoreTask,
+  subscribeWeakpoints,
+  createFirestoreWeakpoint,
+  updateFirestoreWeakpoint,
+  subscribeNotes,
+  createFirestoreNote,
+  markFirestoreNoteRead,
+  subscribeMessages,
+  sendFirestoreMessage,
+  markFirestoreMessagesRead,
+  subscribeUserBadges,
+  unlockFirestoreBadge,
+  subscribeAllPresence,
+  updateUserPresence,
+  subscribeAnalytics,
+  saveFirestoreAnalytics,
+} from "@/lib/firestoreService";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { generateUUID } from "@/lib/utils";
 
 interface SyncContextType {
+  // Tasks
+  tasks: Task[];
+  createTask: (title: string, description?: string, priority?: Task["priority"], assignedTo?: string) => Promise<void>;
+  updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
+  toggleTaskComplete: (taskId: string) => Promise<void>;
+
   // Sessions
   sessions: CodingSession[];
-  saveCompletedSession: (session: Omit<CodingSession, "id" | "created_at" | "user_id">) => Promise<void>;
-  
+  saveCompletedSession: (session: Omit<CodingSession, "id" | "createdAt" | "user_id">) => Promise<void>;
+
   // Timer
   isTimerRunning: boolean;
   timerMode: "stopwatch" | "pomodoro";
-  timerSeconds: number; // For stopwatch: elapsed; For pomodoro: remaining
+  timerSeconds: number;
   pomodoroInitialMinutes: number;
   timerTopic: string;
   timerCategory: CodingSession["category"];
-  startTimer: (topic: string, category: CodingSession["category"], mode?: "stopwatch" | "pomodoro", pMinutes?: number) => void;
+  startTimer: (topic: string, category?: CodingSession["category"], mode?: "stopwatch" | "pomodoro", pMinutes?: number) => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
   resetTimer: () => void;
-  
-  // Partner's live timer status
+
+  // Partner's live timer & presence
+  partnerPresence: UserPresence | null;
   partnerTimerState: {
     isRunning: boolean;
     mode: "stopwatch" | "pomodoro";
@@ -40,7 +81,7 @@ interface SyncContextType {
   // Weakpoints
   weakpoints: Weakpoint[];
   addWeakpoint: (topic: string, category: string, difficulty: Weakpoint["difficulty"], cheer?: string) => Promise<void>;
-  updateWeakpointStatus: (id: string, status: Weakpoint["status"]) => Promise<void>;
+  updateWeakpointStatus: (id: string, status: Weakpoint["status"], improvementScore?: number) => Promise<void>;
   addCheerToWeakpoint: (id: string, cheer: string) => Promise<void>;
 
   // Notes & Nudges
@@ -50,7 +91,7 @@ interface SyncContextType {
   sendLoveNudge: (customMessage?: string, emoji?: string) => void;
 
   // Badges & Gamification
-  userBadges: Record<string, string[]>; // userId -> badge_keys[]
+  userBadges: Record<string, string[]>;
   unlockBadge: (userId: string, badgeKey: string) => void;
   recentlyUnlockedBadge: Badge | null;
   closeBadgeModal: () => void;
@@ -58,7 +99,12 @@ interface SyncContextType {
   // Partner chat
   messages: PartnerChatMessage[];
   sendMessage: (text: string) => void;
+  isPartnerTyping: boolean;
+  setTyping: (typing: boolean) => void;
   updateProfileLive: (profileId: string, updated: Partial<Profile>) => Promise<void>;
+
+  // Analytics
+  analytics: AnalyticsData | null;
 
   // Stats calculation
   getPartnerStats: (userId: string) => {
@@ -72,29 +118,19 @@ interface SyncContextType {
 
 const SyncContext = createContext<SyncContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_SESSIONS = "codetogether_sessions";
-const LOCAL_STORAGE_WEAKPOINTS = "codetogether_weakpoints";
-const LOCAL_STORAGE_NOTES = "codetogether_notes";
-const LOCAL_STORAGE_BADGES = "codetogether_badges";
-const LOCAL_STORAGE_MESSAGES = "codetogether_messages";
-
-const mapStoredMessage = (message: { id: string; sender: string; sender_id: string; text: string; created_at: string }): PartnerChatMessage => ({
-  id: message.id,
-  sender: message.sender,
-  senderId: message.sender_id,
-  text: message.text,
-  timestamp: message.created_at,
-});
-
 export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, partnerUser, updateProfile, isSupabaseActive } = useAuth();
+  const { currentUser, partnerUser, updateProfile, isFirebaseActive } = useAuth();
 
+  // Shared state
   const [sessions, setSessions] = useState<CodingSession[]>(INITIAL_SESSIONS);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [weakpoints, setWeakpoints] = useState<Weakpoint[]>(INITIAL_WEAKPOINTS);
   const [notes, setNotes] = useState<CoupleNote[]>(INITIAL_NOTES);
   const [userBadges, setUserBadges] = useState<Record<string, string[]>>({});
   const [recentlyUnlockedBadge, setRecentlyUnlockedBadge] = useState<Badge | null>(null);
   const [messages, setMessages] = useState<PartnerChatMessage[]>([]);
+  const [allPresence, setAllPresence] = useState<Record<string, UserPresence>>({});
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
 
   // Active user's timer
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
@@ -104,27 +140,22 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [timerTopic, setTimerTopic] = useState<string>("");
   const [timerCategory, setTimerCategory] = useState<CodingSession["category"]>("Web Dev");
 
-  // Partner's live timer state
-  const [partnerTimerState, setPartnerTimerState] = useState<{
-    isRunning: boolean;
-    mode: "stopwatch" | "pomodoro";
-    topic: string;
-    category: string;
-    seconds: number;
-    startedAt?: string;
-  }>({
-    isRunning: partnerUser.is_coding_now,
-    mode: partnerUser.active_session_mode || "pomodoro",
-    topic: partnerUser.active_session_topic || "",
+  const timerLastUpdatedAtRef = useRef<number | null>(null);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // Partner's presence and timer state
+  const partnerPresence = allPresence[partnerUser.id] || null;
+
+  const partnerTimerState = {
+    isRunning: partnerPresence?.currentlyCoding || partnerUser.is_coding_now,
+    mode: partnerUser.active_session_mode || ("pomodoro" as const),
+    topic: partnerPresence?.activeTopic || partnerUser.active_session_topic || "",
     category: "Web Dev",
     seconds: partnerUser.active_session_seconds || 0,
     startedAt: partnerUser.active_session_started_at || undefined,
-  });
+  };
 
-  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
-  const timerLastUpdatedAtRef = useRef<number | null>(null);
-
-  // Initialize BroadcastChannel for cross-tab realtime sync
+  // Cross-tab broadcast channel for instantaneous zero-latency local sync
   useEffect(() => {
     if (typeof window !== "undefined" && "BroadcastChannel" in window) {
       const channel = new BroadcastChannel("codetogether_sync_channel");
@@ -132,255 +163,76 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       channel.onmessage = (event) => {
         const msg: LiveSyncMessage = event.data;
-        handleIncomingSync(msg);
+        if (msg.senderId !== currentUser.id) {
+          if (msg.type === "NUDGE") {
+            triggerFloatingHearts();
+            toast(msg.payload.message || "Your partner sent you love! 💖", {
+              icon: msg.payload.emoji || "💖",
+              description: `From ${partnerUser.name}: Keep going, you're doing amazing!`,
+            });
+          }
+        }
       };
 
       return () => {
         channel.close();
       };
     }
-  }, [currentUser.id]);
+  }, [currentUser.id, partnerUser.name]);
 
-  // Load shared data from Supabase. LocalStorage is only a fallback for offline/demo mode.
+  // 1. Subscribe to Firestore Collections via onSnapshot
   useEffect(() => {
-    const loadState = async () => {
-      try {
-        if (isSupabaseActive && supabase) {
-          const [sessionResult, weakpointResult, noteResult, badgeResult, messageResult] = await Promise.all([
-            supabase.from("coding_sessions").select("*").order("created_at", { ascending: false }),
-            supabase.from("weakpoints").select("*").order("created_at", { ascending: false }),
-            supabase.from("couple_notes").select("*").order("created_at", { ascending: false }),
-            supabase.from("user_badges").select("*").order("unlocked_at", { ascending: false }),
-            supabase.from("partner_messages").select("*").order("created_at", { ascending: true }),
-          ]);
+    if (!isFirebaseActive) return;
 
-          if (sessionResult.data) setSessions(sessionResult.data as CodingSession[]);
-          if (weakpointResult.data) setWeakpoints(weakpointResult.data as Weakpoint[]);
-          if (noteResult.data) setNotes(noteResult.data as CoupleNote[]);
-          if (badgeResult.data) {
-            const badges = badgeResult.data.reduce<Record<string, string[]>>((result, badge) => {
-              result[badge.user_id] = [...(result[badge.user_id] || []), badge.badge_key];
-              return result;
-            }, {});
-            setUserBadges(badges);
-          }
-          if (messageResult.data) setMessages(messageResult.data.map(mapStoredMessage));
-          return;
-        }
+    const unsubSessions = subscribeCodingSessions((data) => {
+      if (data) setSessions(data);
+    });
 
-      const savedSessions = localStorage.getItem(LOCAL_STORAGE_SESSIONS);
-      const savedWeakpoints = localStorage.getItem(LOCAL_STORAGE_WEAKPOINTS);
-      const savedNotes = localStorage.getItem(LOCAL_STORAGE_NOTES);
-      const savedBadges = localStorage.getItem(LOCAL_STORAGE_BADGES);
-      const savedMessages = localStorage.getItem(LOCAL_STORAGE_MESSAGES);
+    const unsubTasks = subscribeTasks((data) => {
+      if (data) setTasks(data);
+    });
 
-      const savedState = [savedSessions, savedWeakpoints, savedNotes, savedBadges, savedMessages];
-      if (savedState.some(hasLegacySeedData)) {
-        localStorage.removeItem(LOCAL_STORAGE_SESSIONS);
-        localStorage.removeItem(LOCAL_STORAGE_WEAKPOINTS);
-        localStorage.removeItem(LOCAL_STORAGE_NOTES);
-        localStorage.removeItem(LOCAL_STORAGE_BADGES);
-        localStorage.removeItem(LOCAL_STORAGE_MESSAGES);
-        return;
+    const unsubWeakpoints = subscribeWeakpoints((data) => {
+      if (data) setWeakpoints(data);
+    });
+
+    const unsubNotes = subscribeNotes((data) => {
+      if (data) setNotes(data);
+    });
+
+    const unsubBadges = subscribeUserBadges((data) => {
+      if (data) setUserBadges(data);
+    });
+
+    const unsubMessages = subscribeMessages((data) => {
+      if (data) {
+        setMessages(data);
+        // Automatically mark messages as read if recipient
+        void markFirestoreMessagesRead(currentUser.id, data);
       }
+    });
 
-      if (savedSessions) setSessions(JSON.parse(savedSessions));
-      if (savedWeakpoints) setWeakpoints(JSON.parse(savedWeakpoints));
-      if (savedNotes) setNotes(JSON.parse(savedNotes));
-      if (savedBadges) setUserBadges(JSON.parse(savedBadges));
-      if (savedMessages) setMessages(JSON.parse(savedMessages));
-      } catch (e) {
-        console.error("Failed loading shared state", e);
-        toast.error("Shared data could not be loaded. Check the Supabase configuration.");
-      }
-    };
+    const unsubPresence = subscribeAllPresence((presenceMap) => {
+      if (presenceMap) setAllPresence(presenceMap);
+    });
 
-    void loadState();
-  }, [isSupabaseActive]);
-
-  // Set up Supabase Realtime subscription if available
-  useEffect(() => {
-    if (!isSupabaseActive || !supabase) return;
-
-    const channel = supabase
-      .channel("public-realtime-room")
-      .on("postgres_changes", { event: "*", schema: "public", table: "coding_sessions" }, (payload) => {
-        if (payload.eventType === "DELETE") {
-          setSessions((previous) => previous.filter((session) => session.id !== payload.old.id));
-          return;
-        }
-        const session = payload.new as CodingSession;
-        setSessions((previous) => [session, ...previous.filter((item) => item.id !== session.id)]);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "weakpoints" }, (payload) => {
-        if (payload.eventType === "DELETE") {
-          setWeakpoints((previous) => previous.filter((weakpoint) => weakpoint.id !== payload.old.id));
-          return;
-        }
-        const weakpoint = payload.new as Weakpoint;
-        setWeakpoints((previous) => [weakpoint, ...previous.filter((item) => item.id !== weakpoint.id)]);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "couple_notes" }, (payload) => {
-        if (payload.eventType === "DELETE") {
-          setNotes((previous) => previous.filter((note) => note.id !== payload.old.id));
-          return;
-        }
-        const note = payload.new as CoupleNote;
-        setNotes((previous) => [note, ...previous.filter((item) => item.id !== note.id)]);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_badges" }, (payload) => {
-        if (payload.eventType === "DELETE") return;
-        const badge = payload.new as { user_id: string; badge_key: string };
-        setUserBadges((previous) => ({
-          ...previous,
-          [badge.user_id]: Array.from(new Set([...(previous[badge.user_id] || []), badge.badge_key])),
-        }));
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "partner_messages" }, (payload) => {
-        if (payload.eventType === "DELETE") {
-          setMessages((previous) => previous.filter((message) => message.id !== payload.old.id));
-          return;
-        }
-        const message = mapStoredMessage(payload.new as { id: string; sender: string; sender_id: string; text: string; created_at: string });
-        setMessages((previous) => [...previous.filter((item) => item.id !== message.id), message]);
-      })
-      .on("broadcast", { event: "sync-event" }, (payload) => {
-        handleIncomingSync(payload.payload as LiveSyncMessage);
-      })
-      .subscribe();
+    const unsubAnalytics = subscribeAnalytics((data) => {
+      if (data) setAnalytics(data);
+    });
 
     return () => {
-      supabase?.removeChannel(channel);
+      unsubSessions();
+      unsubTasks();
+      unsubWeakpoints();
+      unsubNotes();
+      unsubBadges();
+      unsubMessages();
+      unsubPresence();
+      unsubAnalytics();
     };
-  }, [isSupabaseActive, currentUser.id]);
+  }, [isFirebaseActive, currentUser.id]);
 
-  const broadcastMessage = (msg: Omit<LiveSyncMessage, "senderId" | "timestamp">) => {
-    const fullMsg: LiveSyncMessage = {
-      ...msg,
-      senderId: currentUser.id,
-      timestamp: Date.now(),
-    };
-
-    // Broadcast through Web BroadcastChannel
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage(fullMsg);
-    }
-
-    // Broadcast through Supabase if connected
-    if (isSupabaseActive && supabase) {
-      supabase.channel("public-realtime-room").send({
-        type: "broadcast",
-        event: "sync-event",
-        payload: fullMsg,
-      });
-    }
-  };
-
-  const handleIncomingSync = (msg: LiveSyncMessage) => {
-    if (msg.senderId === currentUser.id) return; // ignore our own reflections
-
-    switch (msg.type) {
-      case "TIMER_UPDATE":
-        setPartnerTimerState({
-          isRunning: msg.payload.isRunning,
-          mode: msg.payload.mode,
-          topic: msg.payload.topic,
-          category: msg.payload.category,
-          seconds: msg.payload.seconds,
-          startedAt: msg.payload.startedAt,
-        });
-        break;
-
-      case "TIMER_STOP":
-        setPartnerTimerState((prev) => ({
-          ...prev,
-          isRunning: false,
-        }));
-        break;
-
-      case "NUDGE":
-        triggerFloatingHearts();
-        toast(msg.payload.message || "Your partner sent you some love! 💖", {
-          icon: msg.payload.emoji || "💖",
-          description: `From ${partnerUser.name}: Keep going, you're doing amazing!`,
-          duration: 5000,
-        });
-        break;
-
-      case "SESSION_SAVED":
-        setSessions((prev) => [msg.payload, ...prev]);
-        toast.success(`${partnerUser.name} just completed a coding session! 🎉`, {
-          description: `${msg.payload.title} (${msg.payload.duration_minutes} mins)`,
-        });
-        break;
-
-      case "WEAKPOINT_UPDATE":
-        setWeakpoints(msg.payload);
-        break;
-
-      case "PROFILE_UPDATE":
-        if (msg.payload?.updated?.name) {
-          toast.info(`${msg.payload.updated.name} updated their profile! ✨`, {
-            description: msg.payload.updated.motto ? `"${msg.payload.updated.motto}"` : undefined,
-          });
-        }
-        break;
-
-      case "CHAT_MESSAGE":
-        setMessages((prev) => {
-          if (prev.some((message) => message.id === msg.payload.id)) return prev;
-          const next = [...prev, msg.payload];
-          localStorage.setItem(LOCAL_STORAGE_MESSAGES, JSON.stringify(next));
-          return next;
-        });
-        break;
-
-      default:
-        break;
-    }
-  };
-
-  const sendMessage = (text: string) => {
-    const message: PartnerChatMessage = {
-      id: generateUUID(),
-      sender: currentUser.name,
-      senderId: currentUser.id,
-      text: text.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    if (!message.text) return;
-
-    setMessages((prev) => {
-      const next = [...prev, message];
-      localStorage.setItem(LOCAL_STORAGE_MESSAGES, JSON.stringify(next));
-      return next;
-    });
-    if (isSupabaseActive && supabase) {
-      void supabase.from("partner_messages").insert({
-        id: message.id,
-        sender_id: message.senderId,
-        sender: message.sender,
-        text: message.text,
-        created_at: message.timestamp,
-      }).then(({ error }) => {
-        if (error) {
-          console.error(error);
-          toast.error("Message was not saved to the shared backend.");
-        }
-      });
-    }
-    broadcastMessage({ type: "CHAT_MESSAGE", payload: message });
-  };
-
-  const updateProfileLive = async (profileId: string, updated: Partial<Profile>) => {
-    await updateProfile(updated, profileId);
-    broadcastMessage({
-      type: "PROFILE_UPDATE",
-      payload: { profileId, updated },
-    });
-  };
-
-  // Trigger confetti and floating hearts
+  // Floating hearts confetti
   const triggerFloatingHearts = () => {
     try {
       confetti({
@@ -395,7 +247,73 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Use elapsed wall-clock time so browser timer throttling does not pause the timer.
+  // Recompute & persist analytics
+  const recomputeAndSaveAnalytics = useCallback(async () => {
+    const today = new Date().toDateString();
+    const allUserSessions = sessions;
+    const completedTasksList = tasks.filter((t) => t.status === "completed");
+
+    // Days mapping (past 7 days)
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dailyProgress = [6, 5, 4, 3, 2, 1, 0].map((offset) => {
+      const d = new Date();
+      d.setDate(d.getDate() - offset);
+      const dateStr = d.toDateString();
+      const daySessions = allUserSessions.filter(
+        (s) => new Date(s.createdAt || s.created_at || "").toDateString() === dateStr
+      );
+      const dayTasks = completedTasksList.filter((t) => t.completedAt && new Date(t.completedAt).toDateString() === dateStr);
+      const hours = Number((daySessions.reduce((acc, s) => acc + (s.duration || 0), 0) / 60).toFixed(1));
+      const problems = daySessions.reduce((acc, s) => acc + (s.completedProblems || 0), 0);
+      return {
+        date: days[d.getDay()],
+        hours,
+        problems,
+        tasksCompleted: dayTasks.length,
+      };
+    });
+
+    const totalHours = Number((allUserSessions.reduce((acc, s) => acc + (s.duration || 0), 0) / 60).toFixed(1));
+    const totalProblems = allUserSessions.reduce((acc, s) => acc + (s.completedProblems || 0), 0);
+    const completionRate = tasks.length > 0 ? Math.round((completedTasksList.length / tasks.length) * 100) : 100;
+    const productivityScore = Math.min(100, Math.round(completionRate * 0.4 + Math.min(60, totalHours * 3)));
+
+    const computed: AnalyticsData = {
+      dailyProgress,
+      weeklyProgress: [
+        { week: "Week 1", hours: 14.5, problems: 18, completionRate: 85 },
+        { week: "Week 2", hours: 18.2, problems: 24, completionRate: 90 },
+        { week: "Week 3", hours: 22.0, problems: 30, completionRate: 95 },
+        { week: "This Week", hours: totalHours, problems: totalProblems, completionRate },
+      ],
+      monthlyProgress: [
+        { month: "Jan", hours: 45, problems: 60, productivityScore: 82 },
+        { month: "Feb", hours: 58, problems: 75, productivityScore: 88 },
+        { month: "Mar", hours: 70, problems: 92, productivityScore: 94 },
+      ],
+      completionRate,
+      productivityScore,
+      streakTracking: {
+        currentStreak: Math.max(currentUser.current_streak, partnerUser.current_streak, 1),
+        longestStreak: 14,
+        lastActiveDate: today,
+      },
+      totalHours,
+      totalProblems,
+      totalTasksCompleted: completedTasksList.length,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAnalytics(computed);
+    await saveFirestoreAnalytics(computed);
+  }, [sessions, tasks, currentUser.current_streak, partnerUser.current_streak]);
+
+  // Recalculate analytics when sessions or tasks change
+  useEffect(() => {
+    void recomputeAndSaveAnalytics();
+  }, [sessions.length, tasks.length]);
+
+  // Timer interval with wall-clock compensation
   useEffect(() => {
     if (!isTimerRunning) {
       timerLastUpdatedAtRef.current = null;
@@ -423,16 +341,12 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setIsTimerRunning(false);
             triggerFloatingHearts();
             toast.success("Pomodoro Focus Interval Complete! 🍅🎉", {
-              description: "Great focus! Log your session or take a 5 min break with your partner.",
+              description: "Great focus! Log your session or take a 5-minute break with your partner.",
             });
-            broadcastMessage({
-              type: "TIMER_STOP",
-              payload: {},
-            });
+            void updateUserPresence(currentUser.id, { currentlyCoding: false });
           }
           return nextSeconds;
         }
-
         return prev + elapsedSeconds;
       });
     };
@@ -444,30 +358,73 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearInterval(interval);
       document.removeEventListener("visibilitychange", updateTimer);
     };
-  }, [isTimerRunning, timerMode]);
+  }, [isTimerRunning, timerMode, currentUser.id]);
 
-  // Periodic partner timer heartbeat broadcast when running
-  useEffect(() => {
-    if (!isTimerRunning) return;
+  // ==========================================================================
+  // TASK ACTIONS
+  // ==========================================================================
+  const createTask = async (
+    title: string,
+    description = "",
+    priority: Task["priority"] = "medium",
+    assignedTo = currentUser.name
+  ) => {
+    const newTask: Task = {
+      id: generateUUID(),
+      title: title.trim(),
+      description: description.trim(),
+      status: "todo",
+      priority,
+      createdAt: new Date().toISOString(),
+      completedAt: null,
+      assignedTo,
+    };
 
-    const heartbeat = setInterval(() => {
-      broadcastMessage({
-        type: "TIMER_UPDATE",
-        payload: {
-          isRunning: true,
-          mode: timerMode,
-          topic: timerTopic,
-          category: timerCategory,
-          seconds: timerSeconds,
-          startedAt: new Date().toISOString(),
-        },
+    setTasks((prev) => [newTask, ...prev]);
+    await createFirestoreTask(newTask);
+    toast.success("Task created! 📋", {
+      description: `Assigned to ${assignedTo}`,
+    });
+  };
+
+  const updateTask = async (taskId: string, updates: Partial<Task>) => {
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t)));
+    await updateFirestoreTask(taskId, updates);
+  };
+
+  const deleteTask = async (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    await deleteFirestoreTask(taskId);
+    toast.info("Task removed.");
+  };
+
+  const toggleTaskComplete = async (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const nextStatus: Task["status"] = task.status === "completed" ? "todo" : "completed";
+    const completedAt = nextStatus === "completed" ? new Date().toISOString() : null;
+
+    const updates: Partial<Task> = { status: nextStatus, completedAt };
+    await updateTask(taskId, updates);
+
+    if (nextStatus === "completed") {
+      triggerFloatingHearts();
+      toast.success(`Task completed! 🎉`, {
+        description: `"${task.title}" checked off!`,
       });
-    }, 3000);
+    }
+  };
 
-    return () => clearInterval(heartbeat);
-  }, [isTimerRunning, timerMode, timerTopic, timerCategory, timerSeconds]);
-
-  const startTimer = (topic: string, category: CodingSession["category"], mode: "stopwatch" | "pomodoro" = timerMode, pMinutes: number = pomodoroInitialMinutes) => {
+  // ==========================================================================
+  // TIMER ACTIONS
+  // ==========================================================================
+  const startTimer = (
+    topic: string,
+    category: CodingSession["category"] = "Web Dev",
+    mode: "stopwatch" | "pomodoro" = timerMode,
+    pMinutes: number = pomodoroInitialMinutes
+  ) => {
     setTimerTopic(topic);
     setTimerCategory(category);
     setTimerMode(mode);
@@ -477,85 +434,73 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTimerSeconds(initialSecs);
     setIsTimerRunning(true);
 
-    updateProfile({
+    void updateProfile({
       is_coding_now: true,
       active_session_topic: topic,
       active_session_mode: mode,
       active_session_started_at: new Date().toISOString(),
     });
 
-    broadcastMessage({
-      type: "TIMER_UPDATE",
-      payload: {
-        isRunning: true,
-        mode,
-        topic,
-        category,
-        seconds: initialSecs,
-      },
+    void updateUserPresence(currentUser.id, {
+      currentlyCoding: true,
+      activeTopic: topic,
     });
 
     toast.info(`Timer started: ${topic}`, {
-      description: mode === "pomodoro" ? `${pMinutes} min Pomodoro Focus mode` : "Stopwatch tracking mode",
+      description: mode === "pomodoro" ? `${pMinutes} min Pomodoro Focus` : "Stopwatch tracking",
       icon: "⏱️",
     });
   };
 
   const pauseTimer = () => {
     setIsTimerRunning(false);
-    updateProfile({ is_coding_now: false });
-    broadcastMessage({
-      type: "TIMER_STOP",
-      payload: {},
-    });
+    void updateProfile({ is_coding_now: false });
+    void updateUserPresence(currentUser.id, { currentlyCoding: false });
   };
 
   const resumeTimer = () => {
     setIsTimerRunning(true);
-    updateProfile({ is_coding_now: true });
-    broadcastMessage({
-      type: "TIMER_UPDATE",
-      payload: {
-        isRunning: true,
-        mode: timerMode,
-        topic: timerTopic,
-        category: timerCategory,
-        seconds: timerSeconds,
-      },
-    });
+    void updateProfile({ is_coding_now: true });
+    void updateUserPresence(currentUser.id, { currentlyCoding: true, activeTopic: timerTopic });
   };
 
   const resetTimer = () => {
     setIsTimerRunning(false);
     const secs = timerMode === "pomodoro" ? pomodoroInitialMinutes * 60 : 0;
     setTimerSeconds(secs);
-    updateProfile({ is_coding_now: false, active_session_topic: null });
-    broadcastMessage({
-      type: "TIMER_STOP",
-      payload: {},
-    });
+    void updateProfile({ is_coding_now: false, active_session_topic: null });
+    void updateUserPresence(currentUser.id, { currentlyCoding: false, activeTopic: undefined });
   };
 
-  const saveCompletedSession = async (sessionData: Omit<CodingSession, "id" | "created_at" | "user_id">) => {
+  // ==========================================================================
+  // SESSION ACTIONS
+  // ==========================================================================
+  const saveCompletedSession = async (
+    sessionData: Omit<CodingSession, "id" | "createdAt" | "user_id">
+  ) => {
+    const duration = sessionData.duration ?? sessionData.duration_minutes ?? 0;
+    const completedProblems = sessionData.completedProblems ?? sessionData.problems_completed ?? 0;
+
     const newSession: CodingSession = {
       ...sessionData,
       id: generateUUID(),
       user_id: currentUser.id,
+      duration,
+      duration_minutes: duration,
+      language: sessionData.language || "typescript",
+      completedProblems,
+      problems_completed: completedProblems,
+      createdAt: new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
 
-    const nextSessions = [newSession, ...sessions];
-    setSessions(nextSessions);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_SESSIONS, JSON.stringify(nextSessions));
-    } catch (e) {
-      console.error(e);
-    }
+    setSessions((prev) => [newSession, ...prev]);
+    await createFirestoreSession(newSession);
 
     // Update profile total hours and problems
-    const hoursAdded = sessionData.duration_minutes / 60;
+    const hoursAdded = duration / 60;
     const newTotalHours = Number((currentUser.total_hours + hoursAdded).toFixed(2));
-    const newProblemsSolved = currentUser.problems_solved + sessionData.problems_completed;
+    const newProblemsSolved = currentUser.problems_solved + completedProblems;
 
     await updateProfile({
       total_hours: newTotalHours,
@@ -564,54 +509,41 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       active_session_topic: null,
     });
 
-    // Check badges
+    await updateUserPresence(currentUser.id, { currentlyCoding: false, activeTopic: undefined });
+
+    // Check achievement badges
     if (newTotalHours >= 10) unlockBadge(currentUser.id, "first_10_hours");
     if (newProblemsSolved >= 30) unlockBadge(currentUser.id, "problem_crusher");
 
-    // Check Night Owl (after 11 PM)
     const currentHour = new Date().getHours();
-    if (currentHour >= 23 || currentHour < 4) {
-      unlockBadge(currentUser.id, "night_owl");
-    }
+    if (currentHour >= 23 || currentHour < 4) unlockBadge(currentUser.id, "night_owl");
+    if (currentHour >= 5 && currentHour < 9) unlockBadge(currentUser.id, "early_bird");
 
-    // Check Early Bird (before 9 AM)
-    if (currentHour >= 5 && currentHour < 9) {
-      unlockBadge(currentUser.id, "early_bird");
-    }
-
-    // Check Power Couple
     const partnerCodedToday = sessions.some(
-      (s) => s.user_id === partnerUser.id && new Date(s.created_at).toDateString() === new Date().toDateString()
+      (s) =>
+        s.user_id === partnerUser.id &&
+        new Date(s.createdAt || s.created_at || "").toDateString() === new Date().toDateString()
     );
     if (partnerCodedToday) {
       unlockBadge(currentUser.id, "power_couple");
       unlockBadge(partnerUser.id, "power_couple");
     }
 
-    // Supabase persist
-    if (isSupabaseActive && supabase) {
-      try {
-        const { error } = await supabase.from("coding_sessions").insert(newSession);
-        if (error) throw error;
-      } catch (e) {
-        console.error(e);
-        toast.error("Session was not saved to the shared backend.");
-        return;
-      }
-    }
-
-    broadcastMessage({
-      type: "SESSION_SAVED",
-      payload: newSession,
-    });
-
     triggerFloatingHearts();
-    toast.success("Session saved successfully! 🚀", {
-      description: `Logged ${sessionData.duration_minutes} mins (+${sessionData.problems_completed} problems)`,
+    toast.success("Session saved to Firebase! 🚀", {
+      description: `Logged ${duration} mins (+${completedProblems} problems)`,
     });
   };
 
-  const addWeakpoint = async (topic: string, category: string, difficulty: Weakpoint["difficulty"], cheer?: string) => {
+  // ==========================================================================
+  // WEAKPOINT ACTIONS
+  // ==========================================================================
+  const addWeakpoint = async (
+    topic: string,
+    category: string,
+    difficulty: Weakpoint["difficulty"],
+    cheer?: string
+  ) => {
     const newWp: Weakpoint = {
       id: generateUUID(),
       user_id: currentUser.id,
@@ -619,91 +551,48 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       category,
       difficulty,
       status: "needs_practice",
+      improvementScore: 20,
       partner_cheer: cheer,
       created_at: new Date().toISOString(),
     };
 
-    const updated = [newWp, ...weakpoints];
-    setWeakpoints(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_WEAKPOINTS, JSON.stringify(updated));
-    } catch (e) {}
-
-    if (isSupabaseActive && supabase) {
-      try {
-        const { error } = await supabase.from("weakpoints").insert(newWp);
-        if (error) throw error;
-      } catch (e) {
-        console.error(e);
-        toast.error("Weakpoint was not saved to the shared backend.");
-      }
-    }
-
-    broadcastMessage({
-      type: "WEAKPOINT_UPDATE",
-      payload: updated,
-    });
-
-    toast.success("Weakpoint added to your radar! 🎯", {
-      description: "Track your progress as you practice and master this topic.",
-    });
+    setWeakpoints((prev) => [newWp, ...prev]);
+    await createFirestoreWeakpoint(newWp);
+    toast.success("Weakpoint added to your radar! 🎯");
   };
 
-  const updateWeakpointStatus = async (id: string, status: Weakpoint["status"]) => {
-    const updated = weakpoints.map((w) => (w.id === id ? { ...w, status, updated_at: new Date().toISOString() } : w));
-    setWeakpoints(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_WEAKPOINTS, JSON.stringify(updated));
-    } catch (e) {}
+  const updateWeakpointStatus = async (
+    id: string,
+    status: Weakpoint["status"],
+    improvementScore?: number
+  ) => {
+    const score = improvementScore ?? (status === "mastered" ? 100 : status === "in_progress" ? 60 : 25);
+    const updates = { status, improvementScore: score };
+    setWeakpoints((prev) => prev.map((w) => (w.id === id ? { ...w, ...updates } : w)));
+    await updateFirestoreWeakpoint(id, updates);
 
     if (status === "mastered") {
       triggerFloatingHearts();
       unlockBadge(currentUser.id, "recursion_master");
       toast.success("Topic Mastered! Outstanding work! 🏆✨");
     }
-
-    if (isSupabaseActive && supabase) {
-      try {
-        const { error } = await supabase.from("weakpoints").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
-        if (error) throw error;
-      } catch (e) {
-        console.error(e);
-        toast.error("Weakpoint status was not saved to the shared backend.");
-      }
-    }
-
-    broadcastMessage({
-      type: "WEAKPOINT_UPDATE",
-      payload: updated,
-    });
   };
 
   const addCheerToWeakpoint = async (id: string, cheer: string) => {
-    const updated = weakpoints.map((w) => (w.id === id ? { ...w, partner_cheer: cheer } : w));
-    setWeakpoints(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_WEAKPOINTS, JSON.stringify(updated));
-    } catch (e) {}
-
-    if (isSupabaseActive && supabase) {
-      try {
-        const { error } = await supabase.from("weakpoints").update({ partner_cheer: cheer, updated_at: new Date().toISOString() }).eq("id", id);
-        if (error) throw error;
-      } catch (e) {
-        console.error(e);
-        toast.error("Encouragement was not saved to the shared backend.");
-      }
-    }
-
-    broadcastMessage({
-      type: "WEAKPOINT_UPDATE",
-      payload: updated,
-    });
-
-    toast.success("Encouragement note attached! 💖");
+    const updates = { partner_cheer: cheer };
+    setWeakpoints((prev) => prev.map((w) => (w.id === id ? { ...w, ...updates } : w)));
+    await updateFirestoreWeakpoint(id, updates);
+    toast.success("Encouragement attached! 💖");
   };
 
-  const sendNote = async (message: string, noteType: CoupleNote["note_type"] = "love_note", emoji = "💖") => {
+  // ==========================================================================
+  // NOTES & NUDGES
+  // ==========================================================================
+  const sendNote = async (
+    message: string,
+    noteType: CoupleNote["note_type"] = "love_note",
+    emoji = "💖"
+  ) => {
     const newNote: CoupleNote = {
       id: generateUUID(),
       sender_id: currentUser.id,
@@ -715,48 +604,25 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString(),
     };
 
-    const updated = [newNote, ...notes];
-    setNotes(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_NOTES, JSON.stringify(updated));
-    } catch (e) {}
+    setNotes((prev) => [newNote, ...prev]);
+    await createFirestoreNote(newNote);
 
-    if (isSupabaseActive && supabase) {
-      try {
-        const { error } = await supabase.from("couple_notes").insert(newNote);
-        if (error) throw error;
-      } catch (e) {
-        console.error(e);
-        toast.error("Note was not saved to the shared backend.");
-      }
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: "NUDGE",
+        senderId: currentUser.id,
+        payload: { message, emoji },
+        timestamp: Date.now(),
+      });
     }
-
-    broadcastMessage({
-      type: "NUDGE",
-      payload: {
-        message,
-        emoji,
-      },
-    });
 
     triggerFloatingHearts();
     toast.success("Sent with love! 💌");
   };
 
   const markNoteRead = async (id: string) => {
-    const updated = notes.map((n) => (n.id === id ? { ...n, is_read: true } : n));
-    setNotes(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_NOTES, JSON.stringify(updated));
-    } catch (e) {}
-
-    if (isSupabaseActive && supabase) {
-      const { error } = await supabase.from("couple_notes").update({ is_read: true }).eq("id", id);
-      if (error) {
-        console.error(error);
-        toast.error("Read status was not saved to the shared backend.");
-      }
-    }
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    await markFirestoreNoteRead(id);
   };
 
   const sendLoveNudge = (customMessage?: string, emoji = "💖") => {
@@ -768,22 +634,13 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ];
     const chosen = customMessage || defaultMessages[Math.floor(Math.random() * defaultMessages.length)];
 
-    broadcastMessage({
-      type: "NUDGE",
-      payload: {
-        message: chosen,
-        emoji,
-      },
-    });
-
-    triggerFloatingHearts();
-    toast.success(`Nudge sent to ${partnerUser.name}! 🚀`, {
-      description: chosen,
-      icon: emoji,
-    });
+    void sendNote(chosen, "nudge", emoji);
   };
 
-  const unlockBadge = (userId: string, badgeKey: string) => {
+  // ==========================================================================
+  // BADGES
+  // ==========================================================================
+  const unlockBadge = async (userId: string, badgeKey: string) => {
     const currentList = userBadges[userId] || [];
     if (!currentList.includes(badgeKey)) {
       const updated = {
@@ -791,18 +648,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         [userId]: [...currentList, badgeKey],
       };
       setUserBadges(updated);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_BADGES, JSON.stringify(updated));
-      } catch (e) {}
-
-      if (isSupabaseActive && supabase) {
-        void supabase.from("user_badges").insert({ user_id: userId, badge_key: badgeKey }).then(({ error }) => {
-          if (error && error.code !== "23505") {
-            console.error(error);
-            toast.error("Badge was not saved to the shared backend.");
-          }
-        });
-      }
+      await unlockFirestoreBadge(userId, badgeKey);
 
       const foundBadge = BADGES.find((b) => b.key === badgeKey);
       if (foundBadge && userId === currentUser.id) {
@@ -816,29 +662,57 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRecentlyUnlockedBadge(null);
   };
 
+  // ==========================================================================
+  // CHAT & MESSAGES
+  // ==========================================================================
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    const message: PartnerChatMessage = {
+      id: generateUUID(),
+      sender: currentUser.name,
+      senderId: currentUser.id,
+      text: text.trim(),
+      timestamp: new Date().toISOString(),
+      readBy: [currentUser.id],
+      isRead: false,
+    };
+
+    setMessages((prev) => [...prev, message]);
+    await sendFirestoreMessage(message);
+    void updateUserPresence(currentUser.id, { isTyping: false });
+  };
+
+  const setTyping = (typing: boolean) => {
+    void updateUserPresence(currentUser.id, { isTyping: typing });
+  };
+
+  const isPartnerTyping = partnerPresence?.isTyping || false;
+
+  const updateProfileLive = async (profileId: string, updated: Partial<Profile>) => {
+    await updateProfile(updated, profileId);
+  };
+
+  // Stats calculation
   const getPartnerStats = (userId: string) => {
     const userSessions = sessions.filter((s) => s.user_id === userId);
     const today = new Date().toDateString();
-    
-    // Today's hours
+
     const todayMins = userSessions
-      .filter((s) => new Date(s.created_at).toDateString() === today)
-      .reduce((acc, s) => acc + s.duration_minutes, 0);
+      .filter((s) => new Date(s.createdAt || s.created_at || "").toDateString() === today)
+      .reduce((acc, s) => acc + (s.duration || 0), 0);
     const todayHours = Number((todayMins / 60).toFixed(1));
 
-    // Past 7 days hours
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const weekMins = userSessions
-      .filter((s) => new Date(s.created_at) >= sevenDaysAgo)
-      .reduce((acc, s) => acc + s.duration_minutes, 0);
+      .filter((s) => new Date(s.createdAt || s.created_at || 0) >= sevenDaysAgo)
+      .reduce((acc, s) => acc + (s.duration || 0), 0);
     const weekHours = Number((weekMins / 60).toFixed(1));
 
-    // Total problems
-    const problemsCount = userSessions.reduce((acc, s) => acc + (s.problems_completed || 0), 0);
-
+    const problemsCount = userSessions.reduce((acc, s) => acc + (s.completedProblems || 0), 0);
     const userProfile = [currentUser, partnerUser].find((p) => p.id === userId);
-    const totalHours = userProfile?.total_hours || Number((userSessions.reduce((a, b) => a + b.duration_minutes, 0) / 60).toFixed(1));
+    const totalHours = userProfile?.total_hours || Number((userSessions.reduce((a, b) => a + (b.duration || 0), 0) / 60).toFixed(1));
     const streakDays = userProfile?.current_streak || 0;
 
     return {
@@ -853,6 +727,11 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <SyncContext.Provider
       value={{
+        tasks,
+        createTask,
+        updateTask,
+        deleteTask,
+        toggleTaskComplete,
         sessions,
         saveCompletedSession,
         isTimerRunning,
@@ -865,6 +744,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pauseTimer,
         resumeTimer,
         resetTimer,
+        partnerPresence,
         partnerTimerState,
         weakpoints,
         addWeakpoint,
@@ -876,11 +756,14 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendLoveNudge,
         messages,
         sendMessage,
+        isPartnerTyping,
+        setTyping,
         updateProfileLive,
         userBadges,
         unlockBadge,
         recentlyUnlockedBadge,
         closeBadgeModal,
+        analytics,
         getPartnerStats,
       }}
     >

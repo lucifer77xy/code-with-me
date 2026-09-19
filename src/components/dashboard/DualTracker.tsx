@@ -5,31 +5,35 @@ import { useAuth } from "@/context/AuthContext";
 import { useSync } from "@/context/SyncContext";
 import { LiveTimer } from "./LiveTimer";
 import { StatsCard } from "./StatsCard";
+import { TaskTracker } from "@/components/tasks/TaskTracker";
 import { formatSeconds, getRelativeTime } from "@/lib/utils";
-import { 
-  Flame, 
-  Clock, 
-  Code2, 
-  Calendar, 
-  Sparkles, 
-  Radio, 
-  Heart, 
-  Send, 
-  CheckCircle, 
+import {
+  Flame,
+  Clock,
+  Code2,
+  Calendar,
+  Sparkles,
+  Radio,
+  Heart,
+  Send,
+  CheckCircle,
   PlusCircle,
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { QuickLogModal } from "./QuickLogModal";
 
 export const DualTracker: React.FC = () => {
   const { currentUser, partnerUser, switchUser } = useAuth();
-  const { 
-    sessions, 
-    partnerTimerState, 
-    getPartnerStats, 
-    sendLoveNudge, 
-    saveCompletedSession 
+  const {
+    sessions,
+    partnerPresence,
+    partnerTimerState,
+    getPartnerStats,
+    sendLoveNudge,
+    saveCompletedSession,
   } = useSync();
 
   const [isManualLogOpen, setIsManualLogOpen] = useState(false);
@@ -47,6 +51,9 @@ export const DualTracker: React.FC = () => {
     .filter((s) => s.user_id === partnerUser.id)
     .slice(0, 3);
 
+  const isPartnerOnline = partnerPresence ? partnerPresence.online : true;
+  const isPartnerCoding = partnerTimerState.isRunning;
+
   const handleSendCustomNudge = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customNudgeMsg.trim()) return;
@@ -56,17 +63,21 @@ export const DualTracker: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top Welcome & Couple Motto Banner */}
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-violet-950/60 via-slate-900/80 to-rose-950/60 p-6 backdrop-blur-xl shadow-2xl">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="rounded-full bg-rose-500/20 px-3 py-0.5 text-xs font-semibold text-rose-300 border border-rose-500/30">
-                Pair Programming Portal
+                Couple Coding Portal
               </span>
-              <span className="text-xs text-slate-400">
-                Live Synchronized Dashboard
+              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                Firebase Live Sync
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
@@ -81,7 +92,7 @@ export const DualTracker: React.FC = () => {
             </p>
           </div>
 
-          {/* Quick manual log button */}
+          {/* Quick manual log button & user switcher */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsManualLogOpen(true)}
@@ -104,7 +115,6 @@ export const DualTracker: React.FC = () => {
 
       {/* Dual Side-by-Side Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
         {/* ======================================================== */}
         {/* LEFT COLUMN: MY PROGRESS (Active Partner) */}
         {/* ======================================================== */}
@@ -129,6 +139,9 @@ export const DualTracker: React.FC = () => {
                     <span className="rounded-full bg-violet-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-violet-300 border border-violet-500/30">
                       {currentUser.partner_label}
                     </span>
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                      <Wifi className="h-3 w-3" /> Online
+                    </span>
                   </div>
                   <p className="text-xs text-slate-400">{currentUser.email}</p>
                 </div>
@@ -143,30 +156,10 @@ export const DualTracker: React.FC = () => {
 
             {/* Metric Cards */}
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <StatsCard
-                title="Today"
-                value={`${myStats.todayHours}h`}
-                icon={Clock}
-                accentColor="violet"
-              />
-              <StatsCard
-                title="This Week"
-                value={`${myStats.weekHours}h`}
-                icon={Calendar}
-                accentColor="violet"
-              />
-              <StatsCard
-                title="Problems"
-                value={myStats.problemsCount}
-                icon={Code2}
-                accentColor="violet"
-              />
-              <StatsCard
-                title="Total Hours"
-                value={`${myStats.totalHours}h`}
-                icon={TrendingUp}
-                accentColor="violet"
-              />
+              <StatsCard title="Today" value={`${myStats.todayHours}h`} icon={Clock} accentColor="violet" />
+              <StatsCard title="This Week" value={`${myStats.weekHours}h`} icon={Calendar} accentColor="violet" />
+              <StatsCard title="Problems" value={myStats.problemsCount} icon={Code2} accentColor="violet" />
+              <StatsCard title="Total Hours" value={`${myStats.totalHours}h`} icon={TrendingUp} accentColor="violet" />
             </div>
           </div>
 
@@ -189,34 +182,36 @@ export const DualTracker: React.FC = () => {
                   No sessions logged yet. Start the focus timer above!
                 </p>
               ) : (
-                myRecentSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between rounded-2xl border border-white/5 bg-slate-950/60 p-3 hover:border-violet-500/30 transition-colors"
-                  >
-                    <div>
-                      <h4 className="text-xs font-semibold text-white">{session.title}</h4>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
-                        <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-300">
-                          {session.category}
-                        </span>
-                        <span>•</span>
-                        <span>{session.duration_minutes} mins</span>
-                        {session.problems_completed > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="text-emerald-400 font-medium">
-                              +{session.problems_completed} problems
-                            </span>
-                          </>
-                        )}
+                myRecentSessions.map((session) => {
+                  const duration = session.duration ?? session.duration_minutes ?? 0;
+                  const problems = session.completedProblems ?? session.problems_completed ?? 0;
+                  const createdAt = session.createdAt ?? session.created_at ?? new Date().toISOString();
+
+                  return (
+                    <div
+                      key={session.id}
+                      className="flex items-center justify-between rounded-2xl border border-white/5 bg-slate-950/60 p-3 hover:border-violet-500/30 transition-colors"
+                    >
+                      <div>
+                        <h4 className="text-xs font-semibold text-white">{session.title}</h4>
+                        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+                          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-300">
+                            {session.category || "Web Dev"}
+                          </span>
+                          <span>•</span>
+                          <span>{duration} mins</span>
+                          {problems > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-emerald-400 font-medium">+{problems} problems</span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      <span className="text-[10px] text-slate-500">{getRelativeTime(createdAt)}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">
-                      {getRelativeTime(session.created_at)}
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -236,10 +231,14 @@ export const DualTracker: React.FC = () => {
                     alt={partnerUser.name}
                     className="h-14 w-14 rounded-2xl border-2 border-rose-500/40 bg-slate-800 object-cover p-0.5 shadow-md"
                   />
-                  {partnerTimerState.isRunning ? (
+                  {isPartnerCoding ? (
                     <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
                       <span className="relative inline-flex rounded-full h-4 w-4 bg-rose-500" />
+                    </span>
+                  ) : isPartnerOnline ? (
+                    <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-slate-900 text-[9px] text-white">
+                      ✓
                     </span>
                   ) : (
                     <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-700 ring-2 ring-slate-900 text-[9px] text-slate-300">
@@ -253,6 +252,15 @@ export const DualTracker: React.FC = () => {
                     <span className="rounded-full bg-rose-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-rose-300 border border-rose-500/30">
                       {partnerUser.partner_label}
                     </span>
+                    {isPartnerOnline ? (
+                      <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                        <Wifi className="h-3 w-3" /> Online
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <WifiOff className="h-3 w-3" /> Offline
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-400">{partnerUser.email}</p>
                 </div>
@@ -267,36 +275,16 @@ export const DualTracker: React.FC = () => {
 
             {/* Metric Cards */}
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <StatsCard
-                title="Today"
-                value={`${partnerStats.todayHours}h`}
-                icon={Clock}
-                accentColor="rose"
-              />
-              <StatsCard
-                title="This Week"
-                value={`${partnerStats.weekHours}h`}
-                icon={Calendar}
-                accentColor="rose"
-              />
-              <StatsCard
-                title="Problems"
-                value={partnerStats.problemsCount}
-                icon={Code2}
-                accentColor="rose"
-              />
-              <StatsCard
-                title="Total Hours"
-                value={`${partnerStats.totalHours}h`}
-                icon={TrendingUp}
-                accentColor="rose"
-              />
+              <StatsCard title="Today" value={`${partnerStats.todayHours}h`} icon={Clock} accentColor="rose" />
+              <StatsCard title="This Week" value={`${partnerStats.weekHours}h`} icon={Calendar} accentColor="rose" />
+              <StatsCard title="Problems" value={partnerStats.problemsCount} icon={Code2} accentColor="rose" />
+              <StatsCard title="Total Hours" value={`${partnerStats.totalHours}h`} icon={TrendingUp} accentColor="rose" />
             </div>
           </div>
 
           {/* Partner Live Activity Radar Card */}
           <div className="relative overflow-hidden rounded-3xl border border-rose-500/30 bg-gradient-to-b from-slate-900/90 to-slate-950/90 p-5 sm:p-6 shadow-xl backdrop-blur-xl">
-            {partnerTimerState.isRunning && (
+            {isPartnerCoding && (
               <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-rose-500/20 blur-3xl animate-pulse" />
             )}
 
@@ -311,10 +299,14 @@ export const DualTracker: React.FC = () => {
                 </div>
               </div>
 
-              {partnerTimerState.isRunning ? (
+              {isPartnerCoding ? (
                 <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30 animate-pulse">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
                   CODING RIGHT NOW
+                </span>
+              ) : isPartnerOnline ? (
+                <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-300 border border-cyan-500/20">
+                  Online & Active
                 </span>
               ) : (
                 <span className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-slate-400 border border-white/5">
@@ -324,7 +316,7 @@ export const DualTracker: React.FC = () => {
             </div>
 
             {/* Display active session details */}
-            {partnerTimerState.isRunning ? (
+            {isPartnerCoding ? (
               <div className="my-6 space-y-4 text-center">
                 <div className="inline-block rounded-2xl bg-rose-500/10 border border-rose-500/30 px-4 py-1.5">
                   <span className="text-xs font-medium text-rose-300">
@@ -425,41 +417,44 @@ export const DualTracker: React.FC = () => {
                   No sessions recorded for {partnerUser.name} yet.
                 </p>
               ) : (
-                partnerRecentSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between rounded-2xl border border-white/5 bg-slate-950/60 p-3 hover:border-rose-500/30 transition-colors"
-                  >
-                    <div>
-                      <h4 className="text-xs font-semibold text-white">{session.title}</h4>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
-                        <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-rose-300">
-                          {session.category}
-                        </span>
-                        <span>•</span>
-                        <span>{session.duration_minutes} mins</span>
-                        {session.problems_completed > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="text-emerald-400 font-medium">
-                              +{session.problems_completed} problems
-                            </span>
-                          </>
-                        )}
+                partnerRecentSessions.map((session) => {
+                  const duration = session.duration ?? session.duration_minutes ?? 0;
+                  const problems = session.completedProblems ?? session.problems_completed ?? 0;
+                  const createdAt = session.createdAt ?? session.created_at ?? new Date().toISOString();
+
+                  return (
+                    <div
+                      key={session.id}
+                      className="flex items-center justify-between rounded-2xl border border-white/5 bg-slate-950/60 p-3 hover:border-rose-500/30 transition-colors"
+                    >
+                      <div>
+                        <h4 className="text-xs font-semibold text-white">{session.title}</h4>
+                        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+                          <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-rose-300">
+                            {session.category || "Web Dev"}
+                          </span>
+                          <span>•</span>
+                          <span>{duration} mins</span>
+                          {problems > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-emerald-400 font-medium">+{problems} problems</span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      <span className="text-[10px] text-slate-500">{getRelativeTime(createdAt)}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">
-                      {getRelativeTime(session.created_at)}
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
-
         </div>
-
       </div>
+
+      {/* Shared Couple Tasks Section */}
+      <TaskTracker />
 
       {/* Manual Quick Log Modal */}
       <QuickLogModal

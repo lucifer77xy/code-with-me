@@ -4,17 +4,17 @@ import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useSync } from "@/context/SyncContext";
 import { Weakpoint } from "@/types";
-import { 
-  Target, 
-  Plus, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  Heart, 
-  Sparkles, 
+import {
+  Target,
+  Plus,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Heart,
+  Sparkles,
   X,
   MessageSquareHeart,
-  Filter
+  TrendingUp,
 } from "lucide-react";
 
 export const WeakpointTracker: React.FC = () => {
@@ -42,7 +42,7 @@ export const WeakpointTracker: React.FC = () => {
     e.preventDefault();
     if (!newTopic.trim()) return;
 
-    addWeakpoint(newTopic.trim(), newCategory, newDifficulty, newCheer.trim() || undefined);
+    void addWeakpoint(newTopic.trim(), newCategory, newDifficulty, newCheer.trim() || undefined);
     setNewTopic("");
     setNewCheer("");
     setIsAddModalOpen(false);
@@ -52,7 +52,7 @@ export const WeakpointTracker: React.FC = () => {
     e.preventDefault();
     if (!activeCheerModalWp || !cheerInput.trim()) return;
 
-    addCheerToWeakpoint(activeCheerModalWp.id, cheerInput.trim());
+    void addCheerToWeakpoint(activeCheerModalWp.id, cheerInput.trim());
     setCheerInput("");
     setActiveCheerModalWp(null);
   };
@@ -102,7 +102,7 @@ export const WeakpointTracker: React.FC = () => {
           <div>
             <h2 className="text-lg font-bold text-white">Weakpoint Radar & Growth Tracker</h2>
             <p className="text-xs text-slate-400">
-              Log tricky concepts, motivate each other, and conquer roadblocks together
+              Log tricky concepts, track improvement scores, and conquer roadblocks together
             </p>
           </div>
         </div>
@@ -138,7 +138,7 @@ export const WeakpointTracker: React.FC = () => {
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-rose-500/20 hover:brightness-110 active:scale-95 transition-all"
+            className="flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-rose-500 to-violet-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-rose-500/20 hover:brightness-110 active:scale-95 transition-all"
           >
             <Plus className="h-4 w-4" />
             <span>Add Weakpoint</span>
@@ -147,26 +147,25 @@ export const WeakpointTracker: React.FC = () => {
       </div>
 
       {/* Weakpoints Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredWeakpoints.length === 0 ? (
-          <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-slate-900/40 p-12 text-center">
-            <Target className="mx-auto h-8 w-8 text-slate-500" />
-            <h3 className="mt-3 text-sm font-semibold text-white">No weakpoints logged yet!</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Add topics like Dynamic Programming, CSS Grid, or Graph algorithms to track your mastery.
+          <div className="col-span-full rounded-3xl border border-dashed border-white/10 p-12 text-center">
+            <Target className="mx-auto h-10 w-10 text-slate-600 mb-2" />
+            <p className="text-sm font-semibold text-slate-300">No weakpoints in this view</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Add a topic like &ldquo;Dynamic Programming&rdquo; or &ldquo;GraphQL Caching&rdquo; to track mastery.
             </p>
           </div>
         ) : (
           filteredWeakpoints.map((wp) => {
-            const owner = wp.user_id === currentUser.id ? currentUser : partnerUser;
-            const statusConfig = getStatusBadge(wp.status);
-            const StatusIcon = statusConfig.icon;
             const isMyTopic = wp.user_id === currentUser.id;
+            const owner = isMyTopic ? currentUser : partnerUser;
+            const score = wp.improvementScore ?? (wp.status === "mastered" ? 100 : wp.status === "in_progress" ? 60 : 25);
 
             return (
               <div
                 key={wp.id}
-                className="group relative flex flex-col justify-between rounded-3xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur-xl transition-all duration-300 hover:border-violet-500/30 shadow-lg"
+                className="group flex flex-col justify-between rounded-3xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur-xl shadow-lg hover:border-violet-500/30 transition-all"
               >
                 <div>
                   {/* Top line: owner + category + difficulty */}
@@ -195,6 +194,23 @@ export const WeakpointTracker: React.FC = () => {
                   <h3 className="mt-3 text-base font-bold text-white group-hover:text-rose-300 transition-colors">
                     {wp.topic}
                   </h3>
+
+                  {/* Improvement Score Progress Bar */}
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3 text-cyan-400" />
+                        Improvement Score
+                      </span>
+                      <span className="font-bold text-cyan-300">{score}%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-violet-500 via-pink-500 to-emerald-400 h-1.5 rounded-full transition-all duration-500"
+                        style={{ width: `${score}%` }}
+                      />
+                    </div>
+                  </div>
 
                   {/* Partner Cheer Note Bubble */}
                   {wp.partner_cheer && (
@@ -260,14 +276,11 @@ export const WeakpointTracker: React.FC = () => {
                 <div className="rounded-xl bg-gradient-to-br from-rose-500 to-violet-600 p-2 text-white">
                   <Target className="h-5 w-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Add Roadblock Topic</h3>
-                  <p className="text-xs text-slate-400">Track and conquer together</p>
-                </div>
+                <h3 className="text-base font-bold text-white">Add Tricky Topic / Weakpoint</h3>
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="rounded-xl p-1 text-slate-400 hover:text-white"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -275,14 +288,14 @@ export const WeakpointTracker: React.FC = () => {
 
             <form onSubmit={handleAddSubmit} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300">Topic / Concept</label>
+                <label className="block text-xs font-semibold text-slate-300">Topic / Concept Name</label>
                 <input
                   type="text"
                   required
                   value={newTopic}
                   onChange={(e) => setNewTopic(e.target.value)}
-                  placeholder="e.g. Dynamic Programming (0/1 Knapsack), Redux Toolkit..."
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                  placeholder="e.g. Dynamic Programming, Redux Middleware, Backtracking"
+                  className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:border-rose-500 focus:outline-none"
                 />
               </div>
 
@@ -292,7 +305,7 @@ export const WeakpointTracker: React.FC = () => {
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                    className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-xs text-white focus:border-rose-500 focus:outline-none"
                   >
                     <option value="Algorithms">Algorithms</option>
                     <option value="Data Structures">Data Structures</option>
@@ -307,8 +320,8 @@ export const WeakpointTracker: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-300">Difficulty</label>
                   <select
                     value={newDifficulty}
-                    onChange={(e) => setNewDifficulty(e.target.value as any)}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                    onChange={(e) => setNewDifficulty(e.target.value as Weakpoint["difficulty"])}
+                    className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-xs text-white focus:border-rose-500 focus:outline-none"
                   >
                     <option value="Easy">Easy</option>
                     <option value="Medium">Medium</option>
@@ -319,30 +332,30 @@ export const WeakpointTracker: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300">
-                  Initial Cheer / Strategy Note (Optional)
+                  Initial Encouragement / Note (Optional)
                 </label>
-                <textarea
-                  rows={2}
+                <input
+                  type="text"
                   value={newCheer}
                   onChange={(e) => setNewCheer(e.target.value)}
-                  placeholder="e.g. We will review this together this Thursday evening!"
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                  placeholder="e.g. You solved 1 already, just need a bit more practice!"
+                  className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:border-rose-500 focus:outline-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="rounded-xl border border-white/10 px-4 py-2 text-xs text-slate-300"
+                  className="rounded-2xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-gradient-to-r from-rose-500 to-violet-600 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-rose-500/20"
+                  className="rounded-2xl bg-gradient-to-r from-rose-500 to-violet-600 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-rose-500/20 hover:brightness-110"
                 >
-                  Save Weakpoint
+                  Save to Radar
                 </button>
               </div>
             </form>
@@ -354,14 +367,14 @@ export const WeakpointTracker: React.FC = () => {
       {activeCheerModalWp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in">
           <div className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-900/95 p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div className="flex items-center gap-2">
-                <Heart className="h-5 w-5 text-rose-500 fill-rose-500" />
-                <h3 className="text-base font-bold text-white">Cheer Note</h3>
+                <Heart className="h-5 w-5 fill-rose-500 text-rose-500" />
+                <h3 className="text-base font-bold text-white">Cheer On Your Partner</h3>
               </div>
               <button
                 onClick={() => setActiveCheerModalWp(null)}
-                className="rounded-xl p-1 text-slate-400 hover:text-white"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -369,29 +382,34 @@ export const WeakpointTracker: React.FC = () => {
 
             <form onSubmit={handleCheerSubmit} className="mt-4 space-y-4">
               <p className="text-xs text-slate-300">
-                Encouraging words for <strong className="text-white">&ldquo;{activeCheerModalWp.topic}&rdquo;</strong>:
+                Topic: <strong className="text-white">{activeCheerModalWp.topic}</strong>
               </p>
-              <textarea
-                rows={3}
-                required
-                value={cheerInput}
-                onChange={(e) => setCheerInput(e.target.value)}
-                placeholder="You can do this! Remember the base case and trust the induction step 💖"
-                className="w-full rounded-xl border border-white/10 bg-slate-950 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
-              />
-              <div className="flex justify-end gap-2">
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300">Your Encouraging Words</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={cheerInput}
+                  onChange={(e) => setCheerInput(e.target.value)}
+                  placeholder="e.g. You got this, honey! Take it step-by-step 💖"
+                  className="mt-1.5 w-full rounded-2xl border border-white/10 bg-slate-950 p-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:border-rose-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setActiveCheerModalWp(null)}
-                  className="rounded-xl border border-white/10 px-4 py-2 text-xs text-slate-300"
+                  className="rounded-2xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-gradient-to-r from-rose-500 to-violet-600 px-5 py-2 text-xs font-bold text-white"
+                  className="rounded-2xl bg-gradient-to-r from-rose-500 to-violet-600 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-rose-500/20 hover:brightness-110"
                 >
-                  Attach Cheer 💖
+                  Attach Cheer
                 </button>
               </div>
             </form>

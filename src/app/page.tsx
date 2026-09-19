@@ -182,7 +182,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 p-6 text-center text-xs text-slate-500">
-        CodeTogether © {new Date().getFullYear()} • Built with Next.js 14, Supabase, Tailwind CSS, Recharts & Framer Motion
+        CodeTogether © {new Date().getFullYear()} • Built with Next.js 14, Firebase, Tailwind CSS, Recharts & Framer Motion
       </footer>
     </div>
   );

@@ -19,16 +19,44 @@ export interface Profile {
   updated_at?: string;
 }
 
+export interface Workspace {
+  id: string;
+  ownerId: string;
+  partnerId?: string;
+  members: string[]; // [ownerId, partnerId]
+  owner: Partial<Profile>;
+  partner: Partial<Profile>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: 'todo' | 'in_progress' | 'completed';
+  priority: 'low' | 'medium' | 'high';
+  createdAt: string;
+  completedAt?: string | null;
+  assignedTo: string; // user id or name
+  workspaceId?: string;
+}
+
 export interface CodingSession {
   id: string;
   user_id: string;
   title: string;
-  category: 'Algorithms' | 'Data Structures' | 'Web Dev' | 'System Design' | 'SQL / Database' | 'Other';
-  duration_minutes: number;
-  mode: 'stopwatch' | 'pomodoro';
+  category?: 'Algorithms' | 'Data Structures' | 'Web Dev' | 'System Design' | 'SQL / Database' | 'Other';
+  duration?: number; // minutes
+  duration_minutes?: number; // backwards compatibility
+  language?: string;
+  completedProblems?: number;
+  problems_completed?: number; // backwards compatibility
+  mode?: 'stopwatch' | 'pomodoro';
   notes?: string;
-  problems_completed: number;
-  created_at: string;
+  createdAt?: string;
+  created_at?: string; // backwards compatibility
+  workspaceId?: string;
 }
 
 export interface Weakpoint {
@@ -38,9 +66,11 @@ export interface Weakpoint {
   category: string;
   status: 'needs_practice' | 'in_progress' | 'mastered';
   difficulty: 'Easy' | 'Medium' | 'Hard';
+  improvementScore?: number; // 0-100 score
   partner_cheer?: string;
   created_at: string;
   updated_at?: string;
+  workspaceId?: string;
 }
 
 export interface QuizQuestion {
@@ -63,6 +93,7 @@ export interface QuizResult {
   percentage: number;
   time_taken_seconds: number;
   created_at: string;
+  workspaceId?: string;
 }
 
 export interface Badge {
@@ -75,6 +106,14 @@ export interface Badge {
   unlockedAt?: string;
 }
 
+export interface UserBadge {
+  id?: string;
+  userId: string;
+  badgeId: string;
+  unlockedAt: string;
+  workspaceId?: string;
+}
+
 export interface CoupleNote {
   id: string;
   sender_id: string;
@@ -84,6 +123,7 @@ export interface CoupleNote {
   emoji: string;
   is_read: boolean;
   created_at: string;
+  workspaceId?: string;
 }
 
 export interface LiveSyncMessage {
@@ -96,7 +136,8 @@ export interface LiveSyncMessage {
     | 'PROFILE_UPDATE' 
     | 'CHAT_MESSAGE'
     | 'CODE_UPDATE'
-    | 'CHALLENGE_COMPLETED';
+    | 'CHALLENGE_COMPLETED'
+    | 'TASK_UPDATE';
   senderId: string;
   payload: any;
   timestamp: number;
@@ -108,9 +149,12 @@ export interface PartnerChatMessage {
   senderId: string;
   text: string;
   timestamp: string;
+  readBy?: string[];
+  isRead?: boolean;
+  workspaceId?: string;
 }
 
-// 8. Practice Sessions (Shared room/active editor)
+// Practice Sessions (Shared room/active editor)
 export interface PracticeSession {
   id: string;
   user_id: string;
@@ -123,9 +167,10 @@ export interface PracticeSession {
   language?: string;
   created_at?: string;
   updated_at?: string;
+  workspaceId?: string;
 }
 
-// 9. Practice History (Shared completed logs)
+// Practice History (Shared completed logs)
 export interface PracticeHistory {
   id: string;
   user_id: string;
@@ -137,18 +182,40 @@ export interface PracticeHistory {
   challenge_title?: string;
   language?: string;
   created_at?: string;
+  workspaceId?: string;
 }
 
-// 10. Presence User
-export interface PresenceUser {
+// Presence System
+export interface UserPresence {
   userId: string;
   displayName: string;
   avatarUrl?: string;
   partnerLabel?: string;
-  isOnline: boolean;
-  isCoding: boolean;
-  isTyping?: boolean;
+  online: boolean;
+  lastSeen: string;
+  currentlyCoding: boolean;
+  activeTask?: string;
   activeTopic?: string;
-  lastActive: string;
+  isTyping?: boolean;
 }
 
+// Backwards compatibility alias for PresenceUser
+export type PresenceUser = UserPresence & { isOnline: boolean; isCoding: boolean; lastActive: string };
+
+// Progress Dashboard Analytics
+export interface AnalyticsData {
+  dailyProgress: { date: string; hours: number; problems: number; tasksCompleted: number }[];
+  weeklyProgress: { week: string; hours: number; problems: number; completionRate: number }[];
+  monthlyProgress: { month: string; hours: number; problems: number; productivityScore: number }[];
+  completionRate: number; // 0-100%
+  productivityScore: number; // 0-100 composite score
+  streakTracking: {
+    currentStreak: number;
+    longestStreak: number;
+    lastActiveDate: string;
+  };
+  totalHours: number;
+  totalProblems: number;
+  totalTasksCompleted: number;
+  updatedAt: string;
+}

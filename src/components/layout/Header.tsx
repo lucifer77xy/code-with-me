@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { ProfileEditor } from "@/components/dashboard/ProfileEditor";
 
 export const Header: React.FC = () => {
-  const { currentUser, partnerUser, switchUser, isSupabaseActive } = useAuth();
+  const { currentUser, partnerUser, switchUser, isFirebaseActive } = useAuth();
   const { sendLoveNudge, partnerTimerState } = useSync();
   const [isNudging, setIsNudging] = useState(false);
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
@@ -48,7 +48,7 @@ export const Header: React.FC = () => {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span className="font-medium text-slate-200">
-            {isSupabaseActive ? "Supabase Realtime Synced" : "Live Peer Sync Active"}
+            {isFirebaseActive ? "Firebase Realtime Synced" : "Firebase Cache Synced"}
           </span>
           {partnerTimerState.isRunning && (
             <span className="ml-1.5 flex items-center gap-1 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-semibold text-rose-300 animate-pulse">

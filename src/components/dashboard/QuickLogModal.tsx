@@ -48,8 +48,11 @@ export const QuickLogModal: React.FC<QuickLogModalProps> = ({
     onSave({
       title: title.trim(),
       category,
+      duration: Number(durationMinutes),
       duration_minutes: Number(durationMinutes),
+      language: "typescript",
       mode,
+      completedProblems: Number(problemsCompleted),
       problems_completed: Number(problemsCompleted),
       notes: notes.trim() || undefined,
     });

@@ -1,42 +1,22 @@
-# CodeTogether 💻💕
-### A Joint Coding Tracker & Learning Portal for Couples
+# 💖 CodeTogether — Couple Coding Tracker & Growth Portal
 
-**CodeTogether** is a modern, full-stack web application designed for a couple learning, practicing, and leveling up their coding skills together. Featuring side-by-side live synchronized timers, performance analytics with Recharts, a weakpoint radar, interactive technical quizzes, daily programmer humor, and a friendly gamified leaderboard with badges.
+> A synchronized, pair-programming & technical growth platform built for developer couples to study, build, and conquer career milestones hand-in-hand.
 
 ---
 
-## ✨ Key Features
+## 🌟 Key Features
 
-1. **Dual Profile Access & Quick Persona Switch**:
-   - Custom login page and one-click profile switching between **Alex (Boyfriend 💻)** and **Sam (Girlfriend 🌸)**.
-   - Customizable avatars, mottos, and streaks.
-
-2. **Side-by-Side Dual Tracker Dashboard (Live Sync)**:
-   - Split layout: **My Progress** on the left and **Partner's Progress** on the right.
-   - **Live Focus Timer**: Stopwatch mode and Pomodoro mode (presets for 15, 25, 45, 50 mins).
-   - Real-time presence: When your partner starts a session, their timer pulses live on your screen!
-   - Instant metrics: Hours coded today, weekly total, active daily streak, problems solved counter.
-   - **Send Love Nudges**: Instant encouragement buttons that trigger floating hearts and cheerful toasts on your partner's screen.
-
-3. **Performance Analytics & Weakpoint Tracking**:
-   - Interactive charts with Recharts: Daily coding duration comparison and category distribution (Algorithms, Data Structures, Web Dev, System Design, SQL).
-   - **Weakpoint Radar**: Log tricky concepts (e.g. Dynamic Programming, CSS Grid), track status (`Needs Practice` 🔴, `In Progress` 🟡, `Mastered` 🟢), and attach partner cheer notes!
-
-4. **Daily Motivation & Mind Refreshers**:
-   - Curated library of 40+ programming jokes, developer couple pick-up lines, and inspiring tech quotes.
-   - Category filtering and quick "Next Joke / Quote" button with smooth animations.
-
-5. **Interactive Quizzes**:
-   - Categorized multiple-choice questions for **JavaScript**, **Python**, **Data Structures**, **SQL**, and **Web Development**.
-   - Countdown timer per question, instant correctness feedback with detailed explanations, and score tracking.
-
-6. **Gamification: Leaderboard & Badges**:
-   - Head-to-head comparison on Total Hours, Problems Solved, and Streaks.
-   - 10 unlockable badges (e.g., *Night Owl*, *First 10 Hours*, *Weakpoint Conqueror*, *Quiz Champion*, *Power Couple*).
-   - Animated unlock modal with confetti celebrations.
-
-7. **Couple Sticky Notes**:
-   - Leave sweet notes and hydration reminders on the persistent notes wall.
+- ⏱️ **Live Synchronized Dual Tracker**: Track daily, weekly, and total coding sessions side-by-side. See your partner's live status and active focus intervals in real time.
+- 📋 **Shared Couple Tasks**: Full task tracking with priority, assignee, status, and instant live sync.
+- 💻 **Pair Programming Studio**: Realtime shared code editor with synchronized timer, live presence, and shared practice logs.
+- 🍅 **Pomodoro & Stopwatch Focus Timer**: Run Pomodoro focus intervals or open stopwatch tracking with wall-clock compensation that never drifts when tabs are hidden.
+- 📊 **Firebase-Powered Analytics & Charts**: Interactive graphs powered by Recharts (Productivity graph, Time spent comparison, Task completion, and Cumulative progression trend).
+- 🎯 **Weakpoint Radar**: Track tricky topics, assign difficulty, monitor improvement scores (0-100%), and attach partner cheer notes.
+- 🧠 **Interactive Quizzes**: 5 categories (JavaScript, Python, Data Structures, SQL, Web Dev) with 30-second timers and instant score tracking.
+- 🏆 **Rivalry & Achievement Badges**: Unlockable achievements (Night Owl, Early Bird, Power Couple, Recursion Master) with celebratory confetti.
+- 💌 **Love Notes & Instant Nudges**: Send real-time encouragements, coffee reminders, and heart floats with sound & visual feedback.
+- 💬 **Live Partner Chat**: Instant messaging with typing indicators, read receipts, and timestamps.
+- 😂 **Daily Motivation & Joke System**: "Tell Me A Joke" button returning randomized coding jokes and couple-friendly developer humor.
 
 ---
 
@@ -47,8 +27,8 @@
 - **Visualizations**: Recharts
 - **Animations & Celebrations**: Framer Motion, Canvas Confetti
 - **Notifications**: Sonner
-- **Backend / Database / Auth**: Supabase (PostgreSQL, Realtime subscriptions, RLS policies)
-- **Zero-Config Fallback**: Web BroadcastChannel API + LocalStorage ensures 100% functionality out of the box even before configuring Supabase credentials.
+- **Backend / Database / Auth**: Firebase (Firebase Authentication, Cloud Firestore with multi-tab offline persistence, Firestore Security Rules)
+- **Zero-Config Fallback**: Multi-tab IndexedDB cache and Web BroadcastChannel API ensure 100% functionality out of the box even before adding Firebase credentials.
 
 ---
 
@@ -66,23 +46,29 @@ npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-> **Tip for Multi-Tab Testing**: Open two browser windows side-by-side. In Window 1, enter as **Alex**. In Window 2, click "Switch" to view as **Sam**. Start a timer or send a nudge in one window, and watch the other window sync live in real-time!
+> **Tip for Multi-Tab Testing**: Open two browser windows side-by-side. In Window 1, enter as **Alex**. In Window 2, click "Switch" to view as **Sam**. Start a timer, create a task, or send a nudge in one window, and watch the other window sync live in real time!
 
 ---
 
-## 🗄️ Supabase Setup (Optional for Full Cloud Sync)
+## 🔥 Firebase Setup
 
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Go to the **SQL Editor** in your Supabase dashboard.
-3. Open `supabase/schema.sql` from this repository, paste the entire SQL script, and click **Run**.
-   - This creates all necessary tables (`profiles`, `coding_sessions`, `weakpoints`, `quiz_results`, `user_badges`, `couple_notes`).
-   - Enables Row Level Security (RLS) policies.
-   - Adds tables to the Supabase Realtime publication.
-   - Inserts initial starter seed data.
-4. Copy your Supabase Project URL and Anon API Key into `.env.local`:
+1. Create a free project in the [Firebase Console](https://console.firebase.google.com/).
+2. Enable **Authentication**:
+   - Enable **Google** and **GitHub** sign-in providers in Authentication > Sign-in method.
+3. Enable **Cloud Firestore**:
+   - Create a Firestore database in test or production mode.
+   - Deploy the included `firestore.rules`:
+     ```bash
+     firebase deploy --only firestore:rules
+     ```
+4. Copy your Web App configuration credentials into `.env.local`:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyYourFirebaseApiKeyHere
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789012
+NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:abcdef1234567890
 ```
 5. Restart your development server (`npm run dev`).
 
@@ -90,9 +76,19 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
 
 ## ☁️ Deploying to Vercel
 
+```text
+GitHub Push
+        ↓
+Vercel Auto Deploy
+        ↓
+Firebase Backend
+        ↓
+Live Sync
+```
+
 1. Push your code to GitHub.
-2. Go to [vercel.com](https://vercel.com) and import the repository.
-3. Add the Environment Variables (`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`) in the Vercel project settings if using Supabase.
+2. Import the repository in [Vercel](https://vercel.com).
+3. Add the Firebase environment variables (`NEXT_PUBLIC_FIREBASE_*`) in the Vercel project settings.
 4. Click **Deploy**.
 
 ---
@@ -105,29 +101,34 @@ src/
 │   ├── layout.tsx            # App root, fonts, providers & toaster
 │   ├── page.tsx              # Welcome & portal landing page
 │   ├── dashboard/page.tsx    # Side-by-side live tracker dashboard
+│   ├── practice/page.tsx     # Pair programming code studio
 │   ├── analytics/page.tsx    # Recharts analytics & weakpoint radar
 │   ├── quiz/page.tsx         # Interactive quizzes module
 │   ├── leaderboard/page.tsx  # Couple rivalry & badges gallery
 │   ├── notes/page.tsx        # Couple sticky notes & motivation
-│   └── login/page.tsx        # Authentication & persona picker
+│   └── login/page.tsx        # Firebase Authentication (Google/GitHub) & persona picker
 ├── components/
 │   ├── layout/               # Header, Sidebar, MobileNav
-│   ├── dashboard/            # DualTracker, LiveTimer, StatsCard, QuickLogModal
-│   ├── analytics/            # CodingCharts, WeakpointTracker
+│   ├── dashboard/            # DualTracker, LiveTimer, StatsCard, ChatSidebar, QuickLogModal
+│   ├── tasks/                # TaskTracker (CRUD, priority, assignee, live sync)
+│   ├── analytics/            # CodingCharts (4 Recharts graphs), WeakpointTracker
+│   ├── practice/             # RealtimeCodeEditor, HistoryList
 │   ├── quiz/                 # QuizModule
 │   ├── gamification/         # LeaderboardView, BadgeUnlockModal
 │   └── motivation/           # JokeQuoteWidget, CoupleNotes
 ├── context/
-│   ├── AuthContext.tsx       # Profile management & active user switcher
-│   └── SyncContext.tsx       # Live sessions, timer, broadcast & realtime sync
+│   ├── AuthContext.tsx       # Firebase Auth, persistent accounts & couple workspace
+│   └── SyncContext.tsx       # Firestore onSnapshot subscriptions, presence & analytics
 ├── data/
-│   ├── initialData.ts        # Seed profiles, sessions, and weakpoints
+│   ├── initialData.ts        # Starter profiles, sessions, and weakpoints
 │   ├── jokesAndQuotes.ts     # Curated developer jokes & couple memes
 │   ├── quizQuestions.ts      # Categorized question bank
 │   └── badges.ts             # Unlockable badges definitions
 ├── lib/
-│   ├── supabaseClient.ts     # Supabase client initializer
+│   ├── firebase.ts           # Firebase App, Firestore offline persistence & Auth
+│   ├── firestoreService.ts   # Firestore collections, tasks, sessions, chat & presence
+│   ├── useRealtimePractice.ts# Realtime code editor synchronization
 │   └── utils.ts              # Time formatting & helpers
 └── types/
-    └── index.ts              # TypeScript interfaces
+    └── index.ts              # TypeScript interfaces (Task, Session, Workspace, Presence, etc.)
 ```
