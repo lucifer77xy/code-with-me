@@ -1,20 +1,4 @@
 import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
-  Unsubscribe,
-  where,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db, isFirebaseConfigured } from "./firebase";
-import {
   Profile,
   Workspace,
   Task,
@@ -28,8 +12,80 @@ import {
   AnalyticsData,
   QuizResult,
 } from "@/types";
+import { INITIAL_PROFILES, INITIAL_SESSIONS, INITIAL_WEAKPOINTS, INITIAL_NOTES } from "@/data/initialData";
 
 export const DEFAULT_WORKSPACE_ID = "shared-couple-workspace";
+
+type Unsubscribe = () => void;
+
+// ============================================================================
+// LOCAL STORAGE & BROADCASTCHANNEL REAL-TIME ENGINE (NO FIRESTORE / STORAGE)
+// ============================================================================
+
+const STORAGE_KEYS = {
+  USERS: "codetogether_users",
+  WORKSPACE: "codetogether_workspace",
+  TASKS: "codetogether_tasks",
+  SESSIONS: "codetogether_sessions",
+  WEAKPOINTS: "codetogether_weakpoints",
+  NOTES: "codetogether_notes",
+  MESSAGES: "codetogether_messages",
+  BADGES: "codetogether_badges",
+  PRACTICE_HISTORY: "codetogether_practice_history",
+  PRACTICE_SESSION: "codetogether_practice_session",
+  PRESENCE: "codetogether_presence",
+  ANALYTICS: "codetogether_analytics",
+  QUIZ_RESULTS: "codetogether_quiz_results",
+};
+
+// Event target for same-tab updates and BroadcastChannel for cross-tab updates
+let broadcastChannel: BroadcastChannel | null = null;
+const eventTarget = typeof window !== "undefined" ? new EventTarget() : null;
+
+if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+  try {
+    broadcastChannel = new BroadcastChannel("codetogether_storage_sync");
+    broadcastChannel.onmessage = (event) => {
+      const { type } = event.data || {};
+      if (type && eventTarget) {
+        eventTarget.dispatchEvent(new CustomEvent(type));
+      }
+    };
+  } catch (e) {
+    console.warn("BroadcastChannel not supported or failed:", e);
+  }
+}
+
+const notifySubscribers = (key: string) => {
+  if (eventTarget) {
+    eventTarget.dispatchEvent(new CustomEvent(key));
+  }
+  if (broadcastChannel) {
+    try {
+      broadcastChannel.postMessage({ type: key });
+    } catch {}
+  }
+};
+
+const getLocalItem = <T>(key: string, defaultValue: T): T => {
+  if (typeof window === "undefined") return defaultValue;
+  try {
+    const item = localStorage.getItem(key);
+    return item ? (JSON.parse(item) as T) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+};
+
+const setLocalItem = <T>(key: string, value: T): void => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    notifySubscribers(key);
+  } catch (e) {
+    console.warn("Failed to set localStorage key:", key, e);
+  }
+};
 
 // ============================================================================
 // 1. WORKSPACE MANAGEMENT
@@ -38,25 +94,8 @@ export const getOrCreateWorkspace = async (
   owner: Profile,
   partner: Profile
 ): Promise<Workspace> => {
-  if (!isFirebaseConfigured()) {
-    return {
-      id: DEFAULT_WORKSPACE_ID,
-      ownerId: owner.id,
-      partnerId: partner.id,
-      members: [owner.id, partner.id],
-      owner,
-      partner,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  const workspaceRef = doc(db, "workspaces", DEFAULT_WORKSPACE_ID);
-  const snap = await getDoc(workspaceRef);
-
-  if (snap.exists()) {
-    return snap.data() as Workspace;
-  }
+  const existing = getLocalItem<Workspace | null>(STORAGE_KEYS.WORKSPACE, null);
+  if (existing) return existing;
 
   const newWorkspace: Workspace = {
     id: DEFAULT_WORKSPACE_ID,
@@ -69,7 +108,7 @@ export const getOrCreateWorkspace = async (
     updatedAt: new Date().toISOString(),
   };
 
-  await setDoc(workspaceRef, newWorkspace, { merge: true });
+  setLocalItem(STORAGE_KEYS.WORKSPACE, newWorkspace);
   return newWorkspace;
 };
 
@@ -79,35 +118,30 @@ export const getOrCreateWorkspace = async (
 export const subscribeUserProfiles = (
   callback: (profiles: Profile[]) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const profiles = getLocalItem<Profile[]>(STORAGE_KEYS.USERS, INITIAL_PROFILES);
+    callback(profiles);
+  };
 
-  const usersRef = collection(db, "users");
-  return onSnapshot(
-    usersRef,
-    (snapshot) => {
-      if (!snapshot.empty) {
-        const list: Profile[] = [];
-        snapshot.forEach((doc) => {
-          list.push(doc.data() as Profile);
-        });
-        callback(list);
-      }
-    },
-    (err) => console.warn("Firestore users sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.USERS, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.USERS, handleUpdate);
+  }
+  return () => {};
 };
 
 export const saveUserProfile = async (profile: Profile): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const userRef = doc(db, "users", profile.id);
-  await setDoc(
-    userRef,
-    {
-      ...profile,
-      updated_at: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  const profiles = getLocalItem<Profile[]>(STORAGE_KEYS.USERS, INITIAL_PROFILES);
+  const index = profiles.findIndex((p) => p.id === profile.id);
+  let updated: Profile[];
+  if (index >= 0) {
+    updated = [...profiles];
+    updated[index] = { ...updated[index], ...profile, updated_at: new Date().toISOString() };
+  } else {
+    updated = [...profiles, { ...profile, updated_at: new Date().toISOString() }];
+  }
+  setLocalItem(STORAGE_KEYS.USERS, updated);
 };
 
 // ============================================================================
@@ -117,36 +151,37 @@ export const updateUserPresence = async (
   userId: string,
   presence: Partial<UserPresence>
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const presenceRef = doc(db, "presence", userId);
-  await setDoc(
-    presenceRef,
-    {
-      ...presence,
-      userId,
-      lastSeen: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  const map = getLocalItem<Record<string, UserPresence>>(STORAGE_KEYS.PRESENCE, {});
+  const existing = map[userId] || {
+    userId,
+    displayName: "Coder",
+    online: true,
+    lastSeen: new Date().toISOString(),
+    currentlyCoding: false,
+  };
+  map[userId] = {
+    ...existing,
+    ...presence,
+    userId,
+    lastSeen: new Date().toISOString(),
+  };
+  setLocalItem(STORAGE_KEYS.PRESENCE, map);
 };
 
 export const subscribeAllPresence = (
   callback: (presenceMap: Record<string, UserPresence>) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const map = getLocalItem<Record<string, UserPresence>>(STORAGE_KEYS.PRESENCE, {});
+    callback(map);
+  };
 
-  const presenceRef = collection(db, "presence");
-  return onSnapshot(
-    presenceRef,
-    (snapshot) => {
-      const map: Record<string, UserPresence> = {};
-      snapshot.forEach((doc) => {
-        map[doc.id] = doc.data() as UserPresence;
-      });
-      callback(map);
-    },
-    (err) => console.warn("Presence sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.PRESENCE, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.PRESENCE, handleUpdate);
+  }
+  return () => {};
 };
 
 // ============================================================================
@@ -155,41 +190,36 @@ export const subscribeAllPresence = (
 export const subscribeTasks = (
   callback: (tasks: Task[]) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const tasks = getLocalItem<Task[]>(STORAGE_KEYS.TASKS, []);
+    callback(tasks);
+  };
 
-  const q = query(collection(db, "tasks"), orderBy("createdAt", "desc"));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const tasks: Task[] = [];
-      snapshot.forEach((doc) => {
-        tasks.push({ id: doc.id, ...doc.data() } as Task);
-      });
-      callback(tasks);
-    },
-    (err) => console.warn("Tasks sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.TASKS, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.TASKS, handleUpdate);
+  }
+  return () => {};
 };
 
 export const createFirestoreTask = async (task: Task): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const taskRef = doc(db, "tasks", task.id);
-  await setDoc(taskRef, task);
+  const tasks = getLocalItem<Task[]>(STORAGE_KEYS.TASKS, []);
+  setLocalItem(STORAGE_KEYS.TASKS, [task, ...tasks.filter((t) => t.id !== task.id)]);
 };
 
 export const updateFirestoreTask = async (
   taskId: string,
   updates: Partial<Task>
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const taskRef = doc(db, "tasks", taskId);
-  await updateDoc(taskRef, updates);
+  const tasks = getLocalItem<Task[]>(STORAGE_KEYS.TASKS, []);
+  const updated = tasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t));
+  setLocalItem(STORAGE_KEYS.TASKS, updated);
 };
 
 export const deleteFirestoreTask = async (taskId: string): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const taskRef = doc(db, "tasks", taskId);
-  await deleteDoc(taskRef);
+  const tasks = getLocalItem<Task[]>(STORAGE_KEYS.TASKS, []);
+  setLocalItem(STORAGE_KEYS.TASKS, tasks.filter((t) => t.id !== taskId));
 };
 
 // ============================================================================
@@ -198,50 +228,24 @@ export const deleteFirestoreTask = async (taskId: string): Promise<void> => {
 export const subscribeCodingSessions = (
   callback: (sessions: CodingSession[]) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const sessions = getLocalItem<CodingSession[]>(STORAGE_KEYS.SESSIONS, INITIAL_SESSIONS);
+    callback(sessions);
+  };
 
-  const q = query(
-    collection(db, "codingSessions"),
-    orderBy("createdAt", "desc"),
-    limit(100)
-  );
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const sessions: CodingSession[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as CodingSession;
-        sessions.push({
-          ...data,
-          id: doc.id,
-          duration: data.duration ?? data.duration_minutes ?? 0,
-          duration_minutes: data.duration_minutes ?? data.duration ?? 0,
-          completedProblems: data.completedProblems ?? data.problems_completed ?? 0,
-          problems_completed: data.problems_completed ?? data.completedProblems ?? 0,
-          createdAt: data.createdAt ?? data.created_at ?? new Date().toISOString(),
-          created_at: data.created_at ?? data.createdAt ?? new Date().toISOString(),
-        });
-      });
-      callback(sessions);
-    },
-    (err) => console.warn("Coding sessions sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.SESSIONS, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.SESSIONS, handleUpdate);
+  }
+  return () => {};
 };
 
 export const createFirestoreSession = async (
   session: CodingSession
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const sessionRef = doc(db, "codingSessions", session.id);
-  await setDoc(sessionRef, {
-    ...session,
-    duration: session.duration ?? session.duration_minutes ?? 0,
-    duration_minutes: session.duration_minutes ?? session.duration ?? 0,
-    completedProblems: session.completedProblems ?? session.problems_completed ?? 0,
-    problems_completed: session.problems_completed ?? session.completedProblems ?? 0,
-    createdAt: session.createdAt ?? session.created_at ?? new Date().toISOString(),
-    created_at: session.created_at ?? session.createdAt ?? new Date().toISOString(),
-  });
+  const sessions = getLocalItem<CodingSession[]>(STORAGE_KEYS.SESSIONS, INITIAL_SESSIONS);
+  setLocalItem(STORAGE_KEYS.SESSIONS, [session, ...sessions]);
 };
 
 // ============================================================================
@@ -250,40 +254,33 @@ export const createFirestoreSession = async (
 export const subscribeWeakpoints = (
   callback: (weakpoints: Weakpoint[]) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const list = getLocalItem<Weakpoint[]>(STORAGE_KEYS.WEAKPOINTS, INITIAL_WEAKPOINTS);
+    callback(list);
+  };
 
-  const q = query(collection(db, "weakpoints"), orderBy("created_at", "desc"));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: Weakpoint[] = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as Weakpoint);
-      });
-      callback(list);
-    },
-    (err) => console.warn("Weakpoints sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.WEAKPOINTS, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.WEAKPOINTS, handleUpdate);
+  }
+  return () => {};
 };
 
 export const createFirestoreWeakpoint = async (
   weakpoint: Weakpoint
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "weakpoints", weakpoint.id);
-  await setDoc(ref, weakpoint);
+  const list = getLocalItem<Weakpoint[]>(STORAGE_KEYS.WEAKPOINTS, INITIAL_WEAKPOINTS);
+  setLocalItem(STORAGE_KEYS.WEAKPOINTS, [weakpoint, ...list]);
 };
 
 export const updateFirestoreWeakpoint = async (
   id: string,
   updates: Partial<Weakpoint>
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "weakpoints", id);
-  await updateDoc(ref, {
-    ...updates,
-    updated_at: new Date().toISOString(),
-  });
+  const list = getLocalItem<Weakpoint[]>(STORAGE_KEYS.WEAKPOINTS, INITIAL_WEAKPOINTS);
+  const updated = list.map((w) => (w.id === id ? { ...w, ...updates, updated_at: new Date().toISOString() } : w));
+  setLocalItem(STORAGE_KEYS.WEAKPOINTS, updated);
 };
 
 // ============================================================================
@@ -292,34 +289,30 @@ export const updateFirestoreWeakpoint = async (
 export const subscribeNotes = (
   callback: (notes: CoupleNote[]) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const notes = getLocalItem<CoupleNote[]>(STORAGE_KEYS.NOTES, INITIAL_NOTES);
+    callback(notes);
+  };
 
-  const q = query(collection(db, "notes"), orderBy("created_at", "desc"));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const notes: CoupleNote[] = [];
-      snapshot.forEach((doc) => {
-        notes.push({ id: doc.id, ...doc.data() } as CoupleNote);
-      });
-      callback(notes);
-    },
-    (err) => console.warn("Notes sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.NOTES, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.NOTES, handleUpdate);
+  }
+  return () => {};
 };
 
 export const createFirestoreNote = async (
   note: CoupleNote
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "notes", note.id);
-  await setDoc(ref, note);
+  const notes = getLocalItem<CoupleNote[]>(STORAGE_KEYS.NOTES, INITIAL_NOTES);
+  setLocalItem(STORAGE_KEYS.NOTES, [note, ...notes]);
 };
 
 export const markFirestoreNoteRead = async (id: string): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "notes", id);
-  await updateDoc(ref, { is_read: true });
+  const notes = getLocalItem<CoupleNote[]>(STORAGE_KEYS.NOTES, INITIAL_NOTES);
+  const updated = notes.map((n) => (n.id === id ? { ...n, is_read: true } : n));
+  setLocalItem(STORAGE_KEYS.NOTES, updated);
 };
 
 // ============================================================================
@@ -328,45 +321,45 @@ export const markFirestoreNoteRead = async (id: string): Promise<void> => {
 export const subscribeMessages = (
   callback: (messages: PartnerChatMessage[]) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const messages = getLocalItem<PartnerChatMessage[]>(STORAGE_KEYS.MESSAGES, []);
+    callback(messages);
+  };
 
-  const q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(200));
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const messages: PartnerChatMessage[] = [];
-      snapshot.forEach((doc) => {
-        messages.push({ id: doc.id, ...doc.data() } as PartnerChatMessage);
-      });
-      callback(messages);
-    },
-    (err) => console.warn("Messages sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.MESSAGES, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.MESSAGES, handleUpdate);
+  }
+  return () => {};
 };
 
 export const sendFirestoreMessage = async (
   message: PartnerChatMessage
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "messages", message.id);
-  await setDoc(ref, {
-    ...message,
-    readBy: message.readBy || [message.senderId],
-    isRead: false,
-  });
+  const messages = getLocalItem<PartnerChatMessage[]>(STORAGE_KEYS.MESSAGES, []);
+  setLocalItem(STORAGE_KEYS.MESSAGES, [...messages, message]);
 };
 
 export const markFirestoreMessagesRead = async (
   userId: string,
   messages: PartnerChatMessage[]
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  for (const m of messages) {
+  let changed = false;
+  const updated = messages.map((m) => {
     if (m.senderId !== userId && (!m.readBy || !m.readBy.includes(userId))) {
-      const ref = doc(db, "messages", m.id);
-      const readBy = Array.from(new Set([...(m.readBy || []), userId]));
-      void updateDoc(ref, { readBy, isRead: true });
+      changed = true;
+      return {
+        ...m,
+        readBy: Array.from(new Set([...(m.readBy || []), userId])),
+        isRead: true,
+      };
     }
+    return m;
+  });
+
+  if (changed) {
+    setLocalItem(STORAGE_KEYS.MESSAGES, updated);
   }
 };
 
@@ -376,43 +369,29 @@ export const markFirestoreMessagesRead = async (
 export const subscribeUserBadges = (
   callback: (badgesMap: Record<string, string[]>) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const map = getLocalItem<Record<string, string[]>>(STORAGE_KEYS.BADGES, {});
+    callback(map);
+  };
 
-  const ref = collection(db, "badges");
-  return onSnapshot(
-    ref,
-    (snapshot) => {
-      const map: Record<string, string[]> = {};
-      snapshot.forEach((doc) => {
-        const data = doc.data() as { userId?: string; user_id?: string; badgeId?: string; badge_key?: string };
-        const uId = data.userId || data.user_id;
-        const bId = data.badgeId || data.badge_key;
-        if (uId && bId) {
-          map[uId] = Array.from(new Set([...(map[uId] || []), bId]));
-        }
-      });
-      callback(map);
-    },
-    (err) => console.warn("Badges sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.BADGES, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.BADGES, handleUpdate);
+  }
+  return () => {};
 };
 
 export const unlockFirestoreBadge = async (
   userId: string,
   badgeKey: string
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const id = `${userId}_${badgeKey}`;
-  const ref = doc(db, "badges", id);
-  await setDoc(ref, {
-    id,
-    userId,
-    user_id: userId,
-    badgeId: badgeKey,
-    badge_key: badgeKey,
-    unlockedAt: new Date().toISOString(),
-    unlocked_at: new Date().toISOString(),
-  });
+  const map = getLocalItem<Record<string, string[]>>(STORAGE_KEYS.BADGES, {});
+  const userList = map[userId] || [];
+  if (!userList.includes(badgeKey)) {
+    map[userId] = [...userList, badgeKey];
+    setLocalItem(STORAGE_KEYS.BADGES, map);
+  }
 };
 
 // ============================================================================
@@ -422,69 +401,62 @@ export const subscribePracticeSession = (
   roomId: string,
   callback: (session: PracticeSession | null) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const session = getLocalItem<PracticeSession | null>(`${STORAGE_KEYS.PRACTICE_SESSION}_${roomId}`, null);
+    callback(session);
+  };
 
-  const ref = doc(db, "practiceSessions", roomId);
-  return onSnapshot(
-    ref,
-    (doc) => {
-      if (doc.exists()) {
-        callback({ id: doc.id, ...doc.data() } as PracticeSession);
-      } else {
-        callback(null);
-      }
-    },
-    (err) => console.warn("Practice session sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(`${STORAGE_KEYS.PRACTICE_SESSION}_${roomId}`, handleUpdate);
+    return () => eventTarget.removeEventListener(`${STORAGE_KEYS.PRACTICE_SESSION}_${roomId}`, handleUpdate);
+  }
+  return () => {};
 };
 
 export const updatePracticeSession = async (
   roomId: string,
   data: Partial<PracticeSession>
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "practiceSessions", roomId);
-  await setDoc(
-    ref,
-    {
-      ...data,
+  const existing = getLocalItem<PracticeSession | null>(`${STORAGE_KEYS.PRACTICE_SESSION}_${roomId}`, null);
+  const updated: PracticeSession = {
+    ...(existing || {
       id: roomId,
-      updated_at: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+      user_id: "",
+      display_name: "",
+      code_snippet: "",
+      timer_duration_seconds: 0,
+      status: "active",
+      created_at: new Date().toISOString(),
+    }),
+    ...data,
+    updated_at: new Date().toISOString(),
+  };
+  setLocalItem(`${STORAGE_KEYS.PRACTICE_SESSION}_${roomId}`, updated);
 };
 
 export const subscribePracticeHistory = (
   callback: (history: PracticeHistory[]) => void,
   maxItems = 40
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const history = getLocalItem<PracticeHistory[]>(STORAGE_KEYS.PRACTICE_HISTORY, []);
+    callback(history.slice(0, maxItems));
+  };
 
-  const q = query(
-    collection(db, "practiceHistory"),
-    orderBy("completed_at", "desc"),
-    limit(maxItems)
-  );
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: PracticeHistory[] = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as PracticeHistory);
-      });
-      callback(list);
-    },
-    (err) => console.warn("Practice history sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.PRACTICE_HISTORY, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.PRACTICE_HISTORY, handleUpdate);
+  }
+  return () => {};
 };
 
 export const addFirestorePracticeHistory = async (
   item: PracticeHistory
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "practiceHistory", item.id);
-  await setDoc(ref, item);
+  const history = getLocalItem<PracticeHistory[]>(STORAGE_KEYS.PRACTICE_HISTORY, []);
+  setLocalItem(STORAGE_KEYS.PRACTICE_HISTORY, [item, ...history.filter((h) => h.id !== item.id)]);
 };
 
 // ============================================================================
@@ -493,28 +465,23 @@ export const addFirestorePracticeHistory = async (
 export const subscribeAnalytics = (
   callback: (analytics: AnalyticsData | null) => void
 ): Unsubscribe => {
-  if (!isFirebaseConfigured()) return () => {};
+  const handleUpdate = () => {
+    const analytics = getLocalItem<AnalyticsData | null>(STORAGE_KEYS.ANALYTICS, null);
+    callback(analytics);
+  };
 
-  const ref = doc(db, "analytics", "couple-overview");
-  return onSnapshot(
-    ref,
-    (doc) => {
-      if (doc.exists()) {
-        callback(doc.data() as AnalyticsData);
-      } else {
-        callback(null);
-      }
-    },
-    (err) => console.warn("Analytics sync warning:", err)
-  );
+  handleUpdate();
+  if (eventTarget) {
+    eventTarget.addEventListener(STORAGE_KEYS.ANALYTICS, handleUpdate);
+    return () => eventTarget.removeEventListener(STORAGE_KEYS.ANALYTICS, handleUpdate);
+  }
+  return () => {};
 };
 
 export const saveFirestoreAnalytics = async (
   analytics: AnalyticsData
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "analytics", "couple-overview");
-  await setDoc(ref, analytics, { merge: true });
+  setLocalItem(STORAGE_KEYS.ANALYTICS, analytics);
 };
 
 // ============================================================================
@@ -523,7 +490,6 @@ export const saveFirestoreAnalytics = async (
 export const saveFirestoreQuizResult = async (
   result: QuizResult
 ): Promise<void> => {
-  if (!isFirebaseConfigured()) return;
-  const ref = doc(db, "quizResults", result.id);
-  await setDoc(ref, result);
+  const results = getLocalItem<QuizResult[]>(STORAGE_KEYS.QUIZ_RESULTS, []);
+  setLocalItem(STORAGE_KEYS.QUIZ_RESULTS, [result, ...results]);
 };

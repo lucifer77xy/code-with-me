@@ -1,78 +1,45 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  getFirestore,
-  Firestore,
-} from "firebase/firestore";
-import {
-  getAuth,
-  Auth,
-  GoogleAuthProvider,
-  GithubAuthProvider,
-} from "firebase/auth";
+import { getAuth, Auth, GoogleAuthProvider, GithubAuthProvider } from "firebase/auth";
+import { getAnalytics, isSupported, Analytics } from "firebase/analytics";
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+export const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCTLouJsg1zFvkgQWIthP5ZWy-_s8RQrQo",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "code-with-me-d4e18.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "code-with-me-d4e18",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "code-with-me-d4e18.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "886384504765",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:886384504765:web:752af00fd026ea284eacd4",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-QE3V78W54Y",
 };
 
 export const isFirebaseConfigured = (): boolean => {
-  return Boolean(
-    firebaseConfig.apiKey &&
-      firebaseConfig.projectId &&
-      !firebaseConfig.apiKey.includes("your-api-key") &&
-      !firebaseConfig.projectId.includes("your-project-id")
-  );
+  return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 };
 
-let app: FirebaseApp;
-let db: Firestore;
-let auth: Auth;
+// Initialize Firebase App
+const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-if (!getApps().length) {
-  // Use config if configured or fallback placeholder for dev/build time
-  app = initializeApp(
-    isFirebaseConfigured()
-      ? firebaseConfig
-      : {
-          apiKey: "demo-api-key-placeholder",
-          authDomain: "demo-project.firebaseapp.com",
-          projectId: "demo-project",
-          storageBucket: "demo-project.appspot.com",
-          messagingSenderId: "123456789",
-          appId: "1:123456789:web:abcdef123456",
-        }
-  );
-} else {
-  app = getApp();
-}
+// Initialize Firebase Authentication ONLY (No Firestore or Storage)
+const auth: Auth = getAuth(app);
 
-// Enable offline persistence in browser environment with multi-tab support
-if (typeof window !== "undefined") {
-  try {
-    db = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
-    });
-  } catch {
-    db = getFirestore(app);
-  }
-} else {
-  db = getFirestore(app);
-}
-
-auth = getAuth(app);
-
+// Authentication Providers
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export const githubProvider = new GithubAuthProvider();
 
-export { app, db, auth };
+// Initialize Firebase Analytics safely (client-side only)
+let analytics: Analytics | null = null;
+if (typeof window !== "undefined") {
+  void isSupported().then((supported) => {
+    if (supported) {
+      try {
+        analytics = getAnalytics(app);
+      } catch (e) {
+        console.warn("Firebase analytics initialization skipped:", e);
+      }
+    }
+  });
+}
+
+export { app, auth, analytics };
