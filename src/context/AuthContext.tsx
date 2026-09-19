@@ -8,6 +8,10 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile as updateFirebaseProfile,
   User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -18,6 +22,39 @@ import {
   DEFAULT_WORKSPACE_ID,
 } from "@/lib/firestoreService";
 import { toast } from "sonner";
+
+export const getFirebaseAuthErrorMessage = (error: any): string => {
+  const code = error?.code || "";
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+      return "Invalid email or password. Please check your credentials.";
+    case "auth/user-not-found":
+      return "No account found with this email address.";
+    case "auth/email-already-in-use":
+      return "An account with this email already exists. Try signing in instead.";
+    case "auth/weak-password":
+      return "Password should be at least 6 characters long.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/popup-closed-by-user":
+      return "Sign-in popup was closed before completing.";
+    case "auth/cancelled-popup-request":
+      return "Sign-in attempt was cancelled.";
+    case "auth/popup-blocked":
+      return "Popup was blocked by your browser. Please allow popups for this site.";
+    case "auth/unauthorized-domain":
+      return "Domain is not authorized in Firebase Console (Authentication > Settings > Authorized Domains).";
+    case "auth/operation-not-allowed":
+      return "This sign-in method is not enabled in Firebase Console. Please enable Email/Password or OAuth.";
+    case "auth/too-many-requests":
+      return "Access temporarily blocked due to many attempts. Reset password or try again later.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your internet connection.";
+    default:
+      return error?.message || "Authentication failed. Please try again.";
+  }
+};
 
 interface AuthContextType {
   currentUser: Profile;
@@ -31,6 +68,14 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   signInWithGoogle: () => Promise<boolean>;
   signInWithGitHub: () => Promise<boolean>;
+  signInWithEmail: (email: string, password: string) => Promise<boolean>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    name?: string,
+    partnerLabel?: string
+  ) => Promise<boolean>;
+  sendPasswordReset: (email: string) => Promise<boolean>;
   loginWithEmail: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
@@ -220,6 +265,115 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Direct Firebase Email / Password Sign In
+  const signInWithEmail = async (email: string, password: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (result.user) {
+        toast.success(`Welcome back, ${result.user.displayName || result.user.email?.split("@")[0] || "Coder"}! ✨`, {
+          description: "Signed in securely with Firebase Auth.",
+        });
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.error("Firebase sign-in error:", err);
+      toast.error(getFirebaseAuthErrorMessage(err));
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Direct Firebase Email / Password Sign Up
+  const signUpWithEmail = async (
+    email: string,
+    password: string,
+    name?: string,
+    partnerLabel?: string
+  ): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (result.user) {
+        const displayName = name?.trim() || email.split("@")[0] || "Partner";
+        try {
+          await updateFirebaseProfile(result.user, {
+            displayName,
+          });
+        } catch (profileErr) {
+          console.warn("Could not set display name on Firebase user:", profileErr);
+        }
+
+        const isGirlfriend = partnerLabel?.toLowerCase() === "girlfriend";
+        const newProfile: Profile = {
+          id: result.user.uid,
+          email: result.user.email || email.trim(),
+          name: displayName,
+          partner_label: partnerLabel || "Partner",
+          avatar_url: isGirlfriend ? "/girl-profile.jpg" : "/boy-profile.jpg",
+          motto: "Building our dream stack together ✨",
+          theme_color: isGirlfriend ? "rose" : "violet",
+          current_streak: 1,
+          total_hours: 0,
+          problems_solved: 0,
+          is_coding_now: false,
+        };
+
+        setProfiles((prev) => {
+          const index = prev.findIndex(
+            (p) => p.id === newProfile.id || (p.email && p.email.toLowerCase() === newProfile.email.toLowerCase())
+          );
+          if (index >= 0) {
+            const next = [...prev];
+            next[index] = { ...next[index], ...newProfile };
+            return normalizeProfiles(next);
+          }
+          if (prev.length >= 2 && (!prev[0].email || prev[0].email === "")) {
+            return normalizeProfiles([newProfile, prev[1]]);
+          } else if (prev.length >= 2 && (!prev[1].email || prev[1].email === "")) {
+            return normalizeProfiles([prev[0], newProfile]);
+          }
+          return normalizeProfiles([...prev, newProfile]);
+        });
+
+        setActiveUserId(newProfile.id);
+        await saveUserProfile(newProfile);
+
+        toast.success(`Account created! Welcome, ${displayName}! 🎉`, {
+          description: "Registered successfully via Firebase Auth.",
+        });
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.error("Firebase sign-up error:", err);
+      toast.error(getFirebaseAuthErrorMessage(err));
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Firebase Password Reset Email
+  const sendPasswordReset = async (email: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      await sendPasswordResetEmail(auth, email.trim());
+      toast.success("Password reset email sent! 📬", {
+        description: `Check your inbox (${email.trim()}) for instructions to reset your password.`,
+      });
+      return true;
+    } catch (err: any) {
+      console.error("Firebase password reset error:", err);
+      toast.error(getFirebaseAuthErrorMessage(err));
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Quick email login
   const loginWithEmail = async (email: string): Promise<boolean> => {
     const match = profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
@@ -242,6 +396,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await firebaseSignOut(auth);
       }
       setFirebaseUser(null);
+      setActiveUserId(INITIAL_PROFILES[0].id);
       toast.info("Logged out successfully.");
     } catch (e) {
       console.error(e);
@@ -262,6 +417,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firebaseUser,
         signInWithGoogle,
         signInWithGitHub,
+        signInWithEmail,
+        signUpWithEmail,
+        sendPasswordReset,
         loginWithEmail,
         logout,
       }}

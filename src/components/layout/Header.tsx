@@ -4,12 +4,12 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useSync } from "@/context/SyncContext";
-import { Heart, RefreshCw, Sparkles, Radio, Pencil } from "lucide-react";
+import { Heart, RefreshCw, Sparkles, Radio, Pencil, LogOut, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { ProfileEditor } from "@/components/dashboard/ProfileEditor";
 
 export const Header: React.FC = () => {
-  const { currentUser, partnerUser, switchUser, isFirebaseActive } = useAuth();
+  const { currentUser, partnerUser, switchUser, isFirebaseActive, firebaseUser, logout } = useAuth();
   const { sendLoveNudge, partnerTimerState } = useSync();
   const [isNudging, setIsNudging] = useState(false);
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
@@ -112,6 +112,27 @@ export const Header: React.FC = () => {
               <RefreshCw className="h-3 w-3 text-violet-300" />
               <span className="hidden sm:inline">Switch</span>
             </button>
+
+            {/* Firebase Auth Sign In / Sign Out */}
+            {firebaseUser ? (
+              <button
+                onClick={() => logout()}
+                className="flex items-center gap-1 rounded-xl bg-rose-600/20 hover:bg-rose-600/40 px-2 py-1 text-[11px] font-medium text-rose-200 border border-rose-500/30 transition-colors"
+                title="Sign out of Firebase"
+              >
+                <LogOut className="h-3 w-3 text-rose-300" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="flex items-center gap-1 rounded-xl bg-white/5 hover:bg-white/10 px-2 py-1 text-[11px] font-medium text-slate-300 border border-white/10 transition-colors"
+                title="Sign in with Firebase"
+              >
+                <LogIn className="h-3 w-3 text-slate-300" />
+                <span className="hidden sm:inline">Sign In</span>
+              </Link>
+            )}
           </div>
 
         </div>
